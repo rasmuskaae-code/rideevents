@@ -1,10 +1,31 @@
 <?php
 declare(strict_types=1);
 
-function saveAdmin(string $action, int $eventId): int
+function saveAdmin(string $action, int $eventId, array $user): int
 {
     $id = (int) input('id');
+    $isAdmin = isPlatformAdmin($user);
+    $ownOrganizer = $isAdmin ? null : row('SELECT id FROM organizers WHERE owner_id=? AND active=1', [$user['id']]);
+    if (!$isAdmin && !$ownOrganizer) {
+        throw new AccessDenied();
+    }
+    $creatingEvent = $action === 'event' && $id === 0 && $eventId === 0;
+    $event = $creatingEvent ? null : row('SELECT * FROM events WHERE id=?', [$eventId]);
+    if (!$creatingEvent && (!$event || (!$isAdmin && $event['organizer_id'] !== $ownOrganizer['id']))) {
+        throw new AccessDenied();
+    }
     if ($action === 'event') {
+        if (!$creatingEvent && $id !== $eventId) {
+            throw new AccessDenied();
+        }
+
+        if ($isAdmin) {
+            $organizer = input('organizer_id') === ''
+                ? ($event ? ['id'=>$event['organizer_id']] : requireRow('SELECT id FROM organizers WHERE owner_id IS NULL', []))
+                : requireRow('SELECT id FROM organizers WHERE id=?', [(int) input('organizer_id')]);
+        } else {
+            $organizer = $ownOrganizer;
+        }
         $starts = parseDate(input('starts_on'), 'Y-m-d')->format('Y-m-d');
         $ends = parseDate(input('ends_on'), 'Y-m-d')->format('Y-m-d');
         $discipline = input('discipline');
@@ -12,9 +33,9 @@ function saveAdmin(string $action, int $eventId): int
             throw new InputError('Tjek datoer og disciplin.');
         }
         $values = [field('name', 'Stævnenavn', 160), $discipline, field('location', 'Sted', 200), $starts, $ends,
-            field('description', 'Beskrivelse', 2500, false), flag('visible')];
-        if (!$id) {
-            query('INSERT INTO events (name,discipline,location,starts_on,ends_on,description,visible) VALUES (?,?,?,?,?,?,?)', $values);
+            field('description', 'Beskrivelse', 2500, false), flag('visible'), $organizer['id']];
+        if ($creatingEvent) {
+            query('INSERT INTO events (name,discipline,location,starts_on,ends_on,description,visible,organizer_id) VALUES (?,?,?,?,?,?,?,?)', $values);
             $eventId = (int) db()->lastInsertId();
             if (flag('presets')) {
                 require_once __DIR__ . '/presets.php';
@@ -22,20 +43,18 @@ function saveAdmin(string $action, int $eventId): int
             }
             return $eventId;
         }
-        $event = requireRow('SELECT * FROM events WHERE id=?', [$eventId]);
         foreach (query('SELECT v.starts_at,v.ends_at FROM shifts v JOIN groups g ON g.id=v.group_id WHERE g.event_id=?', [$eventId]) as $shift) {
             if (date('Y-m-d', $shift['starts_at']) < $starts || $shift['ends_at'] > parseDate($ends, 'Y-m-d')->modify('+1 day')->getTimestamp()) {
                 throw new InputError('Stævnet skal dække de oprettede vagter. Tilpas vagternes tider, før du forkorter perioden.');
             }
         }
-        query('UPDATE events SET name=?,discipline=?,location=?,starts_on=?,ends_on=?,description=?,visible=? WHERE id=?', [...$values,$eventId]);
-        if (array_values(array_intersect_key($event, array_flip(['name','discipline','location','starts_on','ends_on','description']))) !== array_slice($values, 0, 6)) {
+        query('UPDATE events SET name=?,discipline=?,location=?,starts_on=?,ends_on=?,description=?,visible=?,organizer_id=? WHERE id=?', [...$values,$eventId]);
+        if ($event['organizer_id'] !== $organizer['id'] || array_values(array_intersect_key($event, array_flip(['name','discipline','location','starts_on','ends_on','description']))) !== array_slice($values, 0, 6)) {
             notifySignups('g.event_id', $eventId, 'Stævnet er opdateret', "Der er nye oplysninger om {$values[0]}. Se din vagt og stævneoplysningerne i Stævnevagt.");
         }
         return $eventId;
     }
 
-    $event = requireRow('SELECT * FROM events WHERE id=?', [$eventId]);
     if ($action === 'group') {
         $values = [field('name', 'Gruppenavn', 160), field('description', 'Jobbeskrivelse', 3000, false), flag('visible')];
         if ($id) {
