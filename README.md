@@ -27,6 +27,12 @@ Dansk hjælperportal til dressur- og springstævner.
 
 5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den bruger samme `config.php` og opretter påmindelser ud fra de gemte vagttider.
 
+### Glemt kodeord og hurtigt login
+
+Under **Log ind** kan brugere bede om et link til at vælge et nyt kodeord eller logge ind via e-mail. Loginlinket gælder i 15 minutter, og linket til nyt kodeord gælder i 30 minutter. Man åbner mailen og trykker **Log ind** for at bekræfte, så en automatisk mailscanner kan åbne linket uden at bruge det. Et nyt kodeord afslutter eksisterende login og gør udestående links ugyldige.
+
+Tilføj `auth_mail` fra `config.example.php` til din lokale `config.php`. Sæt `from` til en afsenderadresse, som Plesk accepterer, og `public_url` til forsiden over HTTPS, f.eks. `https://event.coursetool.org/public/`. Hvis felterne er udeladt, kan web-php bruge `STAEVNE_MAIL_FROM` og `STAEVNE_URL` fra sit miljø. Linkmails bruger webhotellets PHP `mail()` og afsendes med det samme. Afprøv med din egen e-mail efter opsætning.
+
 ### Betaling med Stripe
 
 De første **tre oprettede stævner pr. arrangør er gratis**. Stævner, der allerede findes, tæller med. Sletning gendanner hverken en gratis plads eller et købt stævne. De foreslåede priser er **79 DKK for ét ekstra stævne** og **499 DKK for årsadgang**. Årsadgangen giver ubegrænset oprettelse i 12 måneder og fornyes med et nyt køb. Hjælpere betaler ikke. Platformens egen arrangør er fritaget.
@@ -58,7 +64,7 @@ Aktivér PHP-udvidelserne `mbstring` og `zlib` til PDF og `zip` til Excel på Pl
    php bin/import-sqlite.php /absolut/sti/til/staevnevagt.sqlite
    ```
 
-4. Kontrollér, at importen melder færdig, og åbn derefter websitet og notifikationsjobbet igen. Log ind med din eksisterende konto. Importen kopierer arrangører, konti, stævner, vagter, tilmeldinger, kontaktlister, billeder og notifikationer. Behold backupfilen til kontrol.
+4. Kontrollér, at importen melder færdig, og åbn derefter websitet og notifikationsjobbet igen. Log ind med din eksisterende konto. Importen kopierer arrangører, konti, stævner, vagter, tilmeldinger, kontaktlister, billeder og notifikationer. Behold backupfilen til kontrol. Brugere kan bede om nye login- og kodeordslinks efter importen.
 
 ### Brug SQLite
 

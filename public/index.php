@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 require dirname(__DIR__) . '/app/actions.php';
+require dirname(__DIR__) . '/app/auth-links.php';
 require dirname(__DIR__) . '/app/organizers.php';
 require dirname(__DIR__) . '/app/ui.php';
 
@@ -31,6 +32,12 @@ if (($_SESSION['database'] ?? null) !== $database) {
 }
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
 $user = isset($_SESSION['user']) ? account($_SESSION['user']) : null;
+if (isset($_SESSION['user']) && (!$user || !hash_equals(hash('sha256', $user['password']), $_SESSION['credential'] ?? ''))) {
+    session_regenerate_id(true);
+    $_SESSION = ['database'=>$database, 'csrf'=>bin2hex(random_bytes(32))];
+    $user = null;
+}
+
 $isAdmin = isPlatformAdmin($user);
 $canManage = canManageEvents($user);
 $canCreateOrganizer = !$isAdmin && empty($user['organizer_id']);
@@ -42,7 +49,7 @@ if ($demo) {
 
 $queryId = (int) ($_GET['event'] ?? 0);
 $page = $_GET['page'] ?? 'events';
-$page = in_array($page, ['events','admin','delete','export','platform','login','register','organizer','billing','mine','notices','image'], true) ? $page : 'events';
+$page = in_array($page, ['events','admin','delete','export','platform','login','forgot','quick-login','login-confirm','reset-password','register','organizer','billing','mine','notices','image'], true) ? $page : 'events';
 
 if ($page === 'image') {
     $userId = $user['id'] ?? 0;
@@ -154,6 +161,9 @@ $title = match ($page) {
     'delete' => 'Bekræft sletning',
     'organizer' => 'Opret arrangør',
     'login' => 'Log ind',
+    'forgot' => 'Glemt kodeord',
+    'quick-login', 'login-confirm' => 'Hurtigt login',
+    'reset-password' => 'Nyt kodeord',
     'register' => 'Opret bruger',
     'forbidden' => 'Administratoradgang',
     'mine' => 'Mine vagter',

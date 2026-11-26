@@ -12,6 +12,10 @@ return [
         'password' => '',
         // 'socket' => '/var/run/mysqld/mysqld.sock',
     ],
+    'auth_mail' => [
+        'from' => '',
+        'public_url' => 'https://hjaelpere.rideklub.dk',
+    ],
     'stripe' => [
         'public_url' => 'https://hjaelpere.rideklub.dk',
         'secret_key' => '',

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 function account(int $id): ?array
 {
-    return row('SELECT u.id,u.name,u.email,u.role,o.id AS organizer_id,o.name AS organizer_name,o.active AS organizer_active
+    return row('SELECT u.id,u.name,u.email,u.role,u.password,o.id AS organizer_id,o.name AS organizer_name,o.active AS organizer_active
         FROM users u LEFT JOIN organizers o ON o.owner_id=u.id WHERE u.id=?', [$id]);
 }
 
