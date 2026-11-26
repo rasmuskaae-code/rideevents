@@ -145,6 +145,7 @@ $title = match ($page) {
     'organizer' => 'Opret arrangør',
     'login' => 'Log ind',
     'register' => 'Opret bruger',
+    'forbidden' => 'Administratoradgang',
     'mine' => 'Mine vagter',
     'notices' => 'Notifikationer',
     default => 'Stævner',
@@ -155,34 +156,63 @@ $title = match ($page) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <meta name="theme-color" content="#173a2a">
+    <meta name="theme-color" content="#182737">
     <title><?= e($title) ?> · Stævnevagt</title>
     <link rel="stylesheet" href="assets/styles.css">
     <script src="assets/app.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#indhold">Gå til indhold</a>
-<header class="site-header">
-    <div class="shell header-inner">
-        <a class="brand" href="<?= e($eventLink) ?>"><span class="brand-mark"><?= icon('horse', 25) ?></span><span>Stævnevagt</span></a>
-        <nav aria-label="Hovedmenu" class="header-nav">
-            <a href="<?= e($eventLink) ?>" <?= $page === 'events' ? 'aria-current="page"' : '' ?>>Stævner</a>
-            <?php if (!$isAdmin): ?><a href="?page=mine&amp;event=<?= $eventId ?>" <?= $page === 'mine' ? 'aria-current="page"' : '' ?>>Mine vagter</a><?php endif; ?>
-            <?php if ($canManage): ?><a href="?page=admin" <?= $page === 'admin' ? 'aria-current="page"' : '' ?>>Stævneadmin</a><?php endif; ?>
-            <?php if ($isAdmin): ?><a href="?page=platform" <?= $page === 'platform' ? 'aria-current="page"' : '' ?>>Platformadmin</a><?php endif; ?>
-            <?php if ($canCreateOrganizer): ?><a href="?page=organizer" <?= $page === 'organizer' ? 'aria-current="page"' : '' ?>>Opret arrangør</a><?php endif; ?>
-        </nav>
-        <div class="account">
+<div class="app-layout">
+<aside class="app-sidebar" id="app-navigation">
+    <a class="brand" href="<?= e($eventLink) ?>">
+        <span class="brand-mark"><?= icon('horse', 23) ?></span><span>Stævnevagt</span>
+    </a>
+    <nav aria-label="Hovedmenu" class="sidebar-nav">
+        <div class="nav-group">
+            <p class="nav-heading">Hjælperportal</p>
+            <a href="<?= e($eventLink) ?>" <?= $page === 'events' ? 'aria-current="page"' : '' ?>><?= icon('calendar', 19) ?> Stævner</a>
+            <?php if (!$isAdmin): ?><a href="?page=mine&amp;event=<?= $eventId ?>" <?= $page === 'mine' ? 'aria-current="page"' : '' ?>><?= icon('clipboard', 19) ?> Mine vagter</a><?php endif; ?>
             <?php if ($user): ?>
-                <a class="bell-button" href="?page=notices&amp;event=<?= $eventId ?>" aria-label="Notifikationer<?= $unread ? ', ' . $unread . ' ulæste' : '' ?>"><?= icon('bell') ?><?php if ($unread): ?><span class="unread-dot"></span><?php endif; ?></a>
-                <form method="post" action="<?= e($eventLink) ?>"><?php csrf('logout'); ?><button class="button secondary small" type="submit">Log ud</button></form>
+                <a href="?page=notices&amp;event=<?= $eventId ?>" <?= $page === 'notices' ? 'aria-current="page"' : '' ?>><?= icon('bell', 19) ?> Notifikationer<?php if ($unread): ?><span class="nav-count" aria-label="<?= $unread ?> ulæste"><?= $unread > 99 ? '99+' : $unread ?></span><?php endif; ?></a>
+            <?php endif; ?>
+        </div>
+        <?php if ($canManage || $canCreateOrganizer): ?>
+        <div class="nav-group">
+            <p class="nav-heading">Arrangør</p>
+            <?php if ($canCreateOrganizer): ?><a href="?page=organizer" <?= $page === 'organizer' ? 'aria-current="page"' : '' ?>><?= icon('flag', 19) ?> Opret arrangør</a><?php endif; ?>
+            <?php if ($canManage): ?><a href="?page=admin" <?= in_array($page, ['admin','delete'], true) ? 'aria-current="page"' : '' ?>><?= icon('clipboard', 19) ?> Stævneadmin</a><?php endif; ?>
+            <?php if ($isAdmin): ?><a href="?page=platform" <?= $page === 'platform' ? 'aria-current="page"' : '' ?>><?= icon('users', 19) ?> Platformadmin</a><?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </nav>
+</aside>
+<div class="workspace">
+<header class="topbar">
+    <div class="topbar-inner">
+        <button class="nav-toggle icon-button" type="button" hidden aria-label="Menu" aria-controls="app-navigation" aria-expanded="false"><?= icon('menu', 22) ?></button>
+        <a class="mobile-brand" href="<?= e($eventLink) ?>"><span class="brand-mark"><?= icon('horse', 21) ?></span><span>Stævnevagt</span></a>
+        <div class="topbar-location"><span>Stævnevagt</span><?= icon('chevron-right', 15) ?><strong><?= e($title) ?></strong></div>
+        <div class="account">
+            <?php if ($user):
+                preg_match('/^./u', $user['name'], $initial);
+            ?>
+                <a class="icon-button bell-button" href="?page=notices&amp;event=<?= $eventId ?>" aria-label="Notifikationer<?= $unread ? ', ' . $unread . ' ulæste' : '' ?>"><?= icon('bell', 19) ?><?php if ($unread): ?><span class="unread-dot"></span><?php endif; ?></a>
+                <details class="profile">
+                    <summary><span class="profile-initial"><?= e($initial[0] ?? '?') ?></span><span class="profile-name"><?= e($user['name']) ?></span><?= icon('chevron', 15) ?><span class="sr-only">Kontomenu</span></summary>
+                    <div class="panel profile-menu">
+                        <p><?= e($user['name']) ?></p>
+                        <span><?= $isAdmin ? 'Platformadministrator' : ($canManage ? e($user['organizer_name']) : 'Hjælper') ?></span>
+                        <form method="post" action="<?= e($eventLink) ?>"><?php csrf('logout'); ?><button class="button secondary small" type="submit"><?= icon('logout', 16) ?> Log ud</button></form>
+                    </div>
+                </details>
             <?php else: ?>
                 <a class="button secondary small" href="?page=login"><?= icon('user', 17) ?> Log ind</a>
             <?php endif; ?>
         </div>
     </div>
 </header>
-<main id="indhold" class="shell">
+<main id="indhold" class="shell" tabindex="-1">
 <?php if ($flash): ?><div class="flash <?= e($flash[0]) ?>" role="status"><?= icon($flash[0] === 'ok' ? 'check' : 'info') ?><?= e($flash[1]) ?></div><?php endif; ?>
 <?php
 if ($page === 'events') {
@@ -198,8 +228,10 @@ if ($page === 'events') {
 }
 ?>
 </main>
-<footer class="site-footer">
-    <div class="shell footer-inner"><a class="brand footer-brand" href="<?= e($eventLink) ?>"><?= icon('horse', 19) ?> Stævnevagt</a><span><?= $demo ? 'Demovisning med eksempeldata' : 'Hjælperkoordinering til ridestævner' ?></span></div>
+<footer class="shell site-footer">
+    <span>Stævnevagt</span><?php if ($demo): ?><span>Demovisning med eksempeldata</span><?php endif; ?>
 </footer>
+</div>
+</div>
 </body>
 </html>

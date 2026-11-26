@@ -13,6 +13,11 @@ function icon(string $name, int $size = 20): string
         'calendar'=>'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
         'pin'=>'<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
         'clock'=>'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+        'menu'=>'<path d="M4 6h16M4 12h16M4 18h16"/>',
+        'chevron-right'=>'<path d="m9 6 6 6-6 6"/>',
+        'logout'=>'<path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5m6-4 4-4-4-4m-7 4h11"/>',
+        'download'=>'<path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/>',
+        'settings'=>'<path d="M4 7h16M4 17h16M9 4v6m6 4v6"/>',
         'chevron'=>'<path d="m6 9 6 6 6-6"/>',
         'bell'=>'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
         'user'=>'<circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
@@ -71,5 +76,20 @@ function organizerFilterForm(array $organizers, int $selected, bool $admin): voi
         </select><?= icon('chevron', 16) ?></div>
         <noscript><button class="button secondary small">Filtrér stævner</button></noscript>
     </form>
+    <?php
+}
+
+
+function metricStrip(array $metrics, string $label): void
+{
+    ?>
+    <dl class="panel metrics" aria-label="<?= e($label) ?>">
+        <?php foreach ($metrics as [$glyph, $name, $value]): ?>
+            <div class="metric">
+                <span class="metric-icon"><?= icon($glyph, 20) ?></span>
+                <div><dt><?= e($name) ?></dt><dd><?= e(number_format($value, 0, ',', '.')) ?></dd></div>
+            </div>
+        <?php endforeach; ?>
+    </dl>
     <?php
 }

@@ -5,65 +5,51 @@ $groupList = $event ? query('SELECT * FROM `groups` WHERE event_id=? ORDER BY id
 $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
 ?>
 <section class="interior admin-page">
-    <div class="interior-heading">
-        <div><h1><?= $isAdmin ? 'Stævneadministration' : e($user['organizer_name']) ?></h1><p>Administrér stævner, vagter og tilmeldte hjælpere.</p></div>
-        <?php if ($event): ?><a class="button primary" href="?page=admin&amp;event=0<?= $organizerFilter ? '&amp;organizer=' . $organizerFilter : '' ?>"><?= icon('plus', 18) ?> Nyt stævne</a><?php endif; ?>
-    </div>
-    <?php if (($isAdmin && count($organizerOptions) > 1) || $events): ?>
-    <div class="event-controls admin-picker">
-        <?php if ($isAdmin && count($organizerOptions) > 1): ?><?php organizerFilterForm($organizerOptions, $organizerFilter, true); ?><?php endif; ?>
-        <?php if ($events): ?>
-        <form class="event-picker" method="get">
-            <input type="hidden" name="page" value="admin">
-            <?php if ($organizerFilter): ?><input type="hidden" name="organizer" value="<?= $organizerFilter ?>"><?php endif; ?>
-            <label for="admin-event">Vælg stævne</label><div class="select-wrap"><select id="admin-event" name="event" data-auto-submit>
-                <?php if (!$event): ?><option value="0">Nyt stævne</option><?php endif; ?>
-                <?php foreach ($events as $option): ?><option value="<?= $option['id'] ?>" <?= $eventId === $option['id'] ? 'selected' : '' ?>><?= e($option['name']) ?><?= $isAdmin && !$organizerFilter ? ' · ' . e($option['organizer_name']) : '' ?><?= $option['visible'] ? '' : ' (skjult)' ?></option><?php endforeach; ?>
-            </select><?= icon('chevron', 16) ?></div><noscript><button class="button secondary small">Vis stævne</button></noscript>
-        </form>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
-    <div class="admin-grid">
-        <div>
-            <section class="panel admin-section">
-                <h2><?= $event ? 'Stævneoplysninger' : 'Opret stævne' ?></h2>
-                <form class="form-stack" method="post" action="<?= e($adminLink) ?>">
-                    <?php csrf('event', $eventId); ?>
-                    <?php if ($isAdmin): ?>
-                        <label>Arrangør<span class="select-wrap"><select name="organizer_id" required>
-                            <?php foreach ($organizerOptions as $option): ?><option value="<?= $option['id'] ?>" <?= $selectedOrganizer === $option['id'] || ($selectedOrganizer === null && $option['owner_id'] === null) ? 'selected' : '' ?>><?= e($option['name']) ?><?= $option['active'] ? '' : ' (sat på pause)' ?></option><?php endforeach; ?>
-                        </select><?= icon('chevron', 16) ?></span></label>
-                        <?php if ($event && count($organizerOptions) > 1): ?><p class="form-hint">Ved skift af arrangør får den nye arrangør adgang til stævnets tilmeldinger og kontaktliste.</p><?php endif; ?>
-                    <?php endif; ?>
-                    <label>Stævnenavn<input name="name" value="<?= e($eventForm['name']) ?>" required maxlength="160"></label>
-                    <div class="form-grid">
-                        <label>Disciplin<span class="select-wrap"><select name="discipline"><?php foreach (disciplines() as $value=>$label): ?><option value="<?= e($value) ?>" <?= $eventForm['discipline'] === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select><?= icon('chevron', 16) ?></span></label>
-                        <label>Sted<input name="location" value="<?= e($eventForm['location']) ?>" required maxlength="200"></label>
-                        <label>Første stævnedag<input name="starts_on" type="date" value="<?= e($eventForm['starts_on']) ?>" required></label>
-                        <label>Sidste stævnedag<input name="ends_on" type="date" value="<?= e($eventForm['ends_on']) ?>" required></label>
-                    </div>
-                    <label>Beskrivelse<textarea name="description" maxlength="2500" rows="3"><?= e($eventForm['description']) ?></textarea></label>
-                    <label class="checkbox"><input type="checkbox" name="visible" value="1" <?= $eventForm['visible'] ? 'checked' : '' ?>> Vis stævnet for hjælpere</label>
-                    <?php if (!$event): ?><label class="checkbox"><input type="checkbox" name="presets" value="1" checked> Tilføj skjulte standardgrupper og poster til disciplinen</label><?php endif; ?>
-                    <div class="admin-actions">
-                        <button class="button primary" type="submit"><?= $event ? 'Gem stævne' : 'Opret stævne' ?></button>
-                        <?php if ($event): ?><?php deleteLink($eventId, 'event', $eventId, 'Slet stævne'); ?><?php endif; ?>
-                    </div>
+    <div class="page-heading">
+        <div><h1>Stævneadmin</h1><p><?= $isAdmin ? 'Stævner, vagter og tilmeldte hjælpere' : e($user['organizer_name']) ?></p></div>
+        <div class="admin-tools">
+            <?php if (($isAdmin && count($organizerOptions) > 1) || $events): ?>
+            <div class="event-controls">
+                <?php if ($isAdmin && count($organizerOptions) > 1): ?><?php organizerFilterForm($organizerOptions, $organizerFilter, true); ?><?php endif; ?>
+                <?php if ($events): ?>
+                <form class="event-picker" method="get">
+                    <input type="hidden" name="page" value="admin">
+                    <?php if ($organizerFilter): ?><input type="hidden" name="organizer" value="<?= $organizerFilter ?>"><?php endif; ?>
+                    <label for="admin-event">Vælg stævne</label><div class="select-wrap"><select id="admin-event" name="event" data-auto-submit>
+                        <?php if (!$event): ?><option value="0">Nyt stævne</option><?php endif; ?>
+                        <?php foreach ($events as $option): ?><option value="<?= $option['id'] ?>" <?= $eventId === $option['id'] ? 'selected' : '' ?>><?= e($option['name']) ?><?= $isAdmin && !$organizerFilter && count($organizerOptions) > 1 ? ' · ' . e($option['organizer_name']) : '' ?><?= $option['visible'] ? '' : ' (skjult)' ?></option><?php endforeach; ?>
+                    </select><?= icon('chevron', 16) ?></div><noscript><button class="button secondary small">Vis stævne</button></noscript>
                 </form>
-            </section>
-            <?php if ($event): ?>
-            <section aria-labelledby="groups-heading" class="admin-groups">
-                <h2 id="groups-heading">Vagtgrupper og poster</h2>
-                <?php foreach ($groupList as $group):
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <?php if ($event): ?><a class="button primary" href="?page=admin&amp;event=0<?= $organizerFilter ? '&amp;organizer=' . $organizerFilter : '' ?>"><?= icon('plus', 18) ?> Nyt stævne</a><?php endif; ?>
+        </div>
+    </div>
+    <?php if (!$event): ?>
+        <section class="panel admin-section event-create">
+            <h2>Opret stævne</h2>
+            <?php eventAdminForm($adminLink, $eventForm, $eventId, $isAdmin, $organizerOptions, $selectedOrganizer); ?>
+        </section>
+    <?php else:
+        $counts = row('SELECT COUNT(DISTINCT v.id) AS posts, COUNT(s.id) AS bookings
+            FROM `groups` g JOIN shifts v ON v.group_id=g.id LEFT JOIN signups s ON s.shift_id=v.id WHERE g.event_id=?', [$eventId]);
+        metricStrip([
+            ['clipboard', 'Vagtgrupper', count($groupList)],
+            ['flag', 'Poster', (int) $counts['posts']],
+            ['users', 'Tilmeldinger', (int) $counts['bookings']],
+        ], 'Stævnets vagter');
+    ?>
+    <div class="admin-grid">
+            <section aria-labelledby="groups-heading" class="panel admin-groups">
+                <header class="panel-heading"><div><h2 id="groups-heading">Vagtgrupper og poster</h2><p>Se tilmeldinger og redigér vagterne for stævnet.</p></div></header>
+                <?php foreach ($groupList as $index => $group):
                     $shifts = query('SELECT * FROM shifts WHERE group_id=? ORDER BY starts_at,id', [$group['id']])->fetchAll();
                 ?>
-                <details class="panel admin-details">
+                <details class="admin-details" <?= $index === 0 ? 'open' : '' ?>>
                     <summary><span class="tile"><?= icon(groupIcon($group['name'])) ?></span><strong><?= e($group['name']) ?></strong><span class="status <?= $group['visible'] ? 'available' : '' ?>"><?= $group['visible'] ? 'Synlig' : 'Skjult' ?></span><?= icon('chevron', 17) ?></summary>
                     <div class="admin-details-body">
-                        <?php groupForm($adminLink, $group, $eventId); ?>
                         <div class="admin-shifts">
-                        <h3>Poster</h3>
                         <?php foreach ($shifts as $shift):
                             $signups = query('SELECT s.id,u.name,u.email FROM signups s JOIN users u ON u.id=s.user_id WHERE s.shift_id=? ORDER BY s.created_at,s.id', [$shift['id']])->fetchAll();
                         ?>
@@ -85,29 +71,41 @@ $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
                             <div class="nested-body"><?php shiftForm($adminLink, $group['id'], null, $event['starts_on'], $eventId); ?></div>
                         </details>
                         </div>
+                        <details class="nested-details group-settings">
+                            <summary><strong><?= icon('settings', 16) ?> Redigér vagtgruppe</strong><?= icon('chevron', 16) ?></summary>
+                            <div class="nested-body"><?php groupForm($adminLink, $group, $eventId); ?></div>
+                        </details>
                     </div>
                 </details>
                 <?php endforeach; ?>
-                <details class="panel admin-details">
+                <details class="admin-details add-group">
                     <summary><span class="tile"><?= icon('plus') ?></span><strong>Tilføj vagtgruppe</strong><?= icon('chevron', 17) ?></summary>
                     <div class="admin-details-body"><?php groupForm($adminLink, null, $eventId); ?></div>
                 </details>
                 <datalist id="standard-grupper"><option>Bane &amp; forhindringer</option><option>Sekretariat &amp; indtjek</option><option>Cafeteria</option><option>Parkering &amp; velkomst</option></datalist>
                 <datalist id="standard-poster"><option>Banepersonale</option><option>Banebygning</option><option>Indtjek og sekretariat</option><option>Skriver ved dommerbordet</option><option>Resultater og præmier</option><option>Cafeteria</option><option>Parkeringshjælp</option></datalist>
             </section>
-            <?php endif; ?>
-        </div>
-        <?php if ($event):
+        <?php
             $contacts = query('SELECT * FROM contacts WHERE event_id=? ORDER BY LOWER(name),id', [$eventId])->fetchAll();
         ?>
         <aside class="sidebar">
+        <details class="panel settings-card">
+            <summary class="panel-heading">
+                <span class="tile"><?= icon('settings', 19) ?></span>
+                <span><strong>Stævneoplysninger</strong><small><?= e($event['name']) ?></small></span>
+                <?= icon('chevron', 16) ?>
+            </summary>
+            <div class="admin-section">
+                <?php eventAdminForm($adminLink, $eventForm, $eventId, $isAdmin, $organizerOptions, $selectedOrganizer); ?>
+            </div>
+        </details>
         <section class="panel admin-section" aria-labelledby="helpers-export">
             <span class="tile"><?= icon('clipboard') ?></span>
             <h2 id="helpers-export">Hjælperoversigt</h2>
             <p>Hent vagtgrupper, vagttider, tilmeldte hjælpere og antal pladser for <?= e($event['name']) ?>.</p>
             <div class="admin-actions">
-                <a class="button secondary small" href="?page=export&amp;event=<?= $eventId ?>&amp;format=pdf">Hent PDF</a>
-                <a class="button secondary small" href="?page=export&amp;event=<?= $eventId ?>&amp;format=xlsx">Hent Excel</a>
+                <a class="button secondary small" href="?page=export&amp;event=<?= $eventId ?>&amp;format=pdf"><?= icon('download', 15) ?> Hent PDF</a>
+                <a class="button secondary small" href="?page=export&amp;event=<?= $eventId ?>&amp;format=xlsx"><?= icon('download', 15) ?> Hent Excel</a>
             </div>
         </section>
         <section class="panel admin-section" id="kontakter">
@@ -116,13 +114,43 @@ $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
             <?php foreach ($contacts as $contact): ?>
                 <details class="nested-details contact-details"><summary><span><strong><?= e($contact['name']) ?></strong><span class="muted shift-date-line"><?= e($contact['task']) ?></span></span><?= icon('chevron', 16) ?></summary><div class="nested-body"><?php contactForm($adminLink, $contact); ?></div></details>
             <?php endforeach; ?>
-            <details class="nested-details" <?= $contacts ? '' : 'open' ?>><summary><strong><?= icon('plus', 17) ?> Tilføj kontakt</strong><?= icon('chevron', 16) ?></summary><div class="nested-body"><?php contactForm($adminLink, null); ?></div></details>
+            <details class="nested-details"><summary><strong><?= icon('plus', 17) ?> Tilføj kontakt</strong><?= icon('chevron', 16) ?></summary><div class="nested-body"><?php contactForm($adminLink, null); ?></div></details>
         </section>
         </aside>
-        <?php endif; ?>
     </div>
+    <?php endif; ?>
 </section>
 <?php
+
+function eventAdminForm(string $adminLink, array $eventForm, int $eventId, bool $isAdmin, array $organizerOptions, ?int $selectedOrganizer): void
+{
+    $event = $eventId > 0;
+    ?>
+    <form class="form-stack" method="post" action="<?= e($adminLink) ?>">
+        <?php csrf('event', $eventId); ?>
+        <?php if ($isAdmin): ?>
+            <label>Arrangør<span class="select-wrap"><select name="organizer_id" required>
+                <?php foreach ($organizerOptions as $option): ?><option value="<?= $option['id'] ?>" <?= $selectedOrganizer === $option['id'] || ($selectedOrganizer === null && $option['owner_id'] === null) ? 'selected' : '' ?>><?= e($option['name']) ?><?= $option['active'] ? '' : ' (sat på pause)' ?></option><?php endforeach; ?>
+            </select><?= icon('chevron', 16) ?></span></label>
+            <?php if ($event && count($organizerOptions) > 1): ?><p class="form-hint">Ved skift af arrangør får den nye arrangør adgang til stævnets tilmeldinger og kontaktliste.</p><?php endif; ?>
+        <?php endif; ?>
+        <label>Stævnenavn<input name="name" value="<?= e($eventForm['name']) ?>" required maxlength="160"></label>
+        <div class="form-grid">
+            <label>Disciplin<span class="select-wrap"><select name="discipline"><?php foreach (disciplines() as $value=>$label): ?><option value="<?= e($value) ?>" <?= $eventForm['discipline'] === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select><?= icon('chevron', 16) ?></span></label>
+            <label>Sted<input name="location" value="<?= e($eventForm['location']) ?>" required maxlength="200"></label>
+            <label>Første stævnedag<input name="starts_on" type="date" value="<?= e($eventForm['starts_on']) ?>" required></label>
+            <label>Sidste stævnedag<input name="ends_on" type="date" value="<?= e($eventForm['ends_on']) ?>" required></label>
+        </div>
+        <label>Beskrivelse<textarea name="description" maxlength="2500" rows="3"><?= e($eventForm['description']) ?></textarea></label>
+        <label class="checkbox"><input type="checkbox" name="visible" value="1" <?= $eventForm['visible'] ? 'checked' : '' ?>> Vis stævnet for hjælpere</label>
+        <?php if (!$event): ?><label class="checkbox"><input type="checkbox" name="presets" value="1" checked> Tilføj skjulte standardgrupper og poster til disciplinen</label><?php endif; ?>
+        <div class="admin-actions">
+            <button class="button primary" type="submit"><?= $event ? 'Gem stævne' : 'Opret stævne' ?></button>
+            <?php if ($event): ?><?php deleteLink($eventId, 'event', $eventId, 'Slet stævne'); ?><?php endif; ?>
+        </div>
+    </form>
+    <?php
+}
 
 function deleteLink(int $event, string $kind, int $id, string $label): void
 {
