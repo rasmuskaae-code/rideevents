@@ -158,8 +158,8 @@ $title = match ($page) {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="theme-color" content="#182737">
     <title><?= e($title) ?> · Stævnevagt</title>
-    <link rel="stylesheet" href="assets/styles.css">
-    <script src="assets/app.js" defer></script>
+    <link rel="stylesheet" href="<?= e(assetUrl('dashboard.css')) ?>">
+    <script src="<?= e(assetUrl('dashboard.js')) ?>" defer></script>
 </head>
 <body>
 <a class="skip" href="#indhold">Gå til indhold</a>

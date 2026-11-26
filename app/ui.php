@@ -6,6 +6,13 @@ function e(mixed $value): string
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function assetUrl(string $file): string
+{
+    $path = 'assets/' . $file;
+    $version = hash_file('sha256', dirname(__DIR__) . '/public/' . $path);
+    return $path . '?v=' . substr($version, 0, 16);
+}
+
 function icon(string $name, int $size = 20): string
 {
     $paths = [
