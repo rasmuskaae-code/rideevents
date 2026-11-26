@@ -55,3 +55,14 @@ if (profileMenu) {
         }
     });
 }
+
+const authLink = document.querySelector('[data-auth-link]');
+if (authLink) {
+    const token = window.location.hash.slice(1);
+    if (/^[a-f0-9]{64}$/.test(token)) {
+        authLink.querySelector('[data-link-token]').value = token;
+    } else {
+        authLink.querySelector('[data-link-error]').hidden = false;
+        authLink.querySelector('button[type=submit]').disabled = true;
+    }
+}

@@ -110,6 +110,7 @@ function initializeSqlite(PDO $pdo): void
         1 => [__DIR__ . '/schema.sql'],
         2 => [__DIR__ . '/migrations/002-organizers.sql'],
         3 => [__DIR__ . '/migrations/003-access-and-billing.sql', __DIR__ . '/migrations/access-and-billing-backfill.sql'],
+        4 => [__DIR__ . '/migrations/004-auth-links.sql'],
     ];
     if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() >= array_key_last($migrations)) {
         return;
@@ -144,7 +145,7 @@ function runMysqlSql(PDO $pdo, string $file): void
 
 function initializeMysql(PDO $pdo): void
 {
-    if (mysqlSchemaVersion($pdo) >= 2) {
+    if (mysqlSchemaVersion($pdo) >= 3) {
         return;
     }
     $lock = mysqlLock($pdo, 'schema', 20) ?? throw new RuntimeException('Databasen klargøres af en anden proces.');
@@ -163,6 +164,10 @@ function initializeMysql(PDO $pdo): void
                 runMysqlSql($pdo, __DIR__ . '/migrations/access-and-billing-backfill.sql');
                 $pdo->exec('INSERT INTO staevne_schema (version) VALUES (2)');
             });
+        }
+        if ($version < 3) {
+            runMysqlSql($pdo, __DIR__ . '/migrations/003-auth-links-mysql.sql');
+            $pdo->exec('INSERT INTO staevne_schema (version) VALUES (3)');
         }
     } finally {
         releaseMysqlLock($pdo, $lock);

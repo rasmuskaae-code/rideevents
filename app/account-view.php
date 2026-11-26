@@ -18,8 +18,14 @@
             <label>Adgangskode<input type="password" name="password" autocomplete="<?= $register ? 'new-password' : 'current-password' ?>" <?= $register ? 'minlength="8" aria-describedby="password-help"' : '' ?> maxlength="72" required></label>
             <?php if ($register): ?><p class="form-hint" id="password-help">Brug mindst 8 tegn.</p><?php endif; ?>
         <?php endif; ?>
+        <?php if ($page === 'login'): ?>
+            <a class="text-link auth-forgot" href="?page=forgot&amp;event=<?= $queryId ?>">Glemt kodeord?</a>
+        <?php endif; ?>
         <button class="button primary" type="submit"><?= $heading ?></button>
     </form>
+    <?php if ($page === 'login'): ?>
+        <div class="auth-alternative"><a class="button secondary" href="?page=quick-login&amp;event=<?= $queryId ?>">Send mig et loginlink</a></div>
+    <?php endif; ?>
     <?php if (!$user): ?>
     <div class="auth-switch">
         <?php if ($register): ?>Har du allerede en profil? <a class="text-link" href="?page=login<?= $queryId ? '&amp;event=' . $queryId : '' ?>">Log ind</a>
@@ -27,7 +33,9 @@
     </div>
     <?php endif; ?>
 </section>
-<?php elseif ($page === 'mine'):
+<?php elseif (in_array($page, ['forgot','quick-login','login-confirm','reset-password'], true)):
+    require __DIR__ . '/auth-link-view.php';
+elseif ($page === 'mine'):
     $shifts = query('SELECT v.*,g.name AS group_name,g.id AS group_id,e.name AS event_name,o.name AS organizer_name FROM signups s JOIN shifts v ON v.id=s.shift_id
         JOIN `groups` g ON g.id=v.group_id JOIN events e ON e.id=g.event_id JOIN organizers o ON o.id=e.organizer_id WHERE s.user_id=? ORDER BY v.starts_at DESC,v.id DESC', [$user['id']])->fetchAll();
 ?>

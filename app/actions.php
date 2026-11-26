@@ -69,6 +69,38 @@ function handlePost(?array $user, int $eventId, string $page): never
             go($eventLink);
         }
 
+        if (in_array($action, ['quick-login','forgot'], true)) {
+            requestAuthLink($action === 'forgot' ? 'reset' : 'quick', $eventId);
+            go('?page=' . $action . '&event=' . $eventId, 'Hvis der findes en konto med den e-mailadresse, modtager du et link.');
+        }
+
+        if (in_array($action, ['login-confirm','reset-password'], true)) {
+            $reset = $action === 'reset-password';
+            $token = input('token');
+            $newPassword = null;
+            if ($reset && validAuthToken($token)) {
+                $password = input('password');
+                if (strlen($password) < 8 || strlen($password) > 72 || str_contains($password, "\0") || $password !== input('password_confirm')) {
+                    $_SESSION['flash'] = ['error', 'Brug mindst 8 tegn, og indtast det samme kodeord i begge felter.'];
+                    go('?page=reset-password#' . $token);
+                }
+                $newPassword = $password;
+            }
+            $link = redeemAuthLink($reset ? 'reset' : 'quick', $token, $newPassword);
+            if (!$link) {
+                $_SESSION['flash'] = ['error', 'Linket er udløbet eller har allerede været brugt. Bed om et nyt link.'];
+                go($reset ? '?page=forgot' : '?page=quick-login');
+            }
+            if ($reset) {
+                session_regenerate_id(true);
+                $_SESSION = ['database'=>databaseIdentity()];
+                go('?page=login&event=' . $link['event'], 'Dit kodeord er ændret. Log ind med dit nye kodeord.');
+            }
+            startUserSession($link['id'], $link['password']);
+            $signedIn = account($link['id']);
+            go(loginDestination($signedIn, $link['event']), 'Du er logget ind.');
+        }
+
         if ($action === 'organizer' && $user) {
             if (isPlatformAdmin($user)) {
                 throw new AccessDenied();
@@ -109,15 +141,7 @@ function handlePost(?array $user, int $eventId, string $page): never
             } else {
                 $key = hash('sha256', $email . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
                 $window = intdiv(time(), 600);
-                $attempts = atomic(function () use ($key, $window): int {
-                    $insert = usingMysql()
-                        ? 'INSERT INTO login_attempts (`key`,`window`,`count`) VALUES (?,?,0) ON DUPLICATE KEY UPDATE `count`=`count`'
-                        : 'INSERT OR IGNORE INTO login_attempts (`key`,`window`,`count`) VALUES (?,?,0)';
-                    query($insert, [$key,$window]);
-                    query('UPDATE login_attempts SET `count` = CASE WHEN `window` = ? THEN `count` + 1 ELSE 1 END, `window` = ? WHERE `key` = ?',
-                        [$window,$window,$key]);
-                    return (int) query('SELECT `count` FROM login_attempts WHERE `key`=?', [$key])->fetchColumn();
-                });
+                $attempts = atomic(fn() => countLoginAttempt($key, $window));
                 if ($attempts > 12) {
                     throw new InputError('For mange loginforsøg. Prøv igen om lidt.');
                 }
@@ -128,10 +152,9 @@ function handlePost(?array $user, int $eventId, string $page): never
                 $id = $account['id'];
             }
 
-            session_regenerate_id(true);
-            $_SESSION = ['user' => $id, 'database' => databaseIdentity()];
+            startUserSession($id, $action === 'login' ? $account['password'] : $hash);
             $signedIn = account($id);
-            $landing = isPlatformAdmin($signedIn) ? '?page=platform' : (canManageEvents($signedIn) && !$eventId ? $adminLink : $eventLink);
+            $landing = loginDestination($signedIn, $eventId);
             if ($action === 'organizer') {
                 go($adminLink, 'Arrangøren er oprettet. Du kan nu oprette stævner.');
             }
@@ -217,7 +240,7 @@ function handlePost(?array $user, int $eventId, string $page): never
     } catch (InputError $error) {
         $_SESSION['flash'] = ['error', $error->getMessage()];
         go(match ($page) {
-            'register', 'login', 'organizer' => '?page=' . $page . '&event=' . $eventId,
+            'register', 'login', 'organizer', 'forgot', 'quick-login' => '?page=' . $page . '&event=' . $eventId,
             'admin', 'delete' => $adminLink,
             'platform' => '?page=platform',
             'billing' => '?page=billing',

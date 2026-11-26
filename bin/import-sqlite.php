@@ -22,8 +22,8 @@ try {
     ]);
     $sqlite->beginTransaction();
     $version = (int) $sqlite->query('PRAGMA user_version')->fetchColumn();
-    if (!in_array($version, [1,2,3], true)) {
-        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1, 2 eller 3.');
+    if (!in_array($version, [1,2,3,4], true)) {
+        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1, 2, 3 eller 4.');
     }
 
     $mysql = db();

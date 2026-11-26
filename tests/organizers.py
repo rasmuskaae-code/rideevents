@@ -1,5 +1,7 @@
 """Run with python3 tests/organizers.py on a machine with PHP and pdo_sqlite."""
 import datetime
+from email import policy
+from email.parser import BytesParser
 import hashlib
 import hmac
 import http.cookiejar
@@ -57,7 +59,12 @@ class OrganizerTests(unittest.TestCase):
         self.create_legacy_database()
 
         config = directory / 'config.php'
-        config.write_text("<?php return ['driver'=>'sqlite','stripe'=>['secret_key'=>'sk_test_fixture','webhook_secret'=>'" + WEBHOOK_SECRET + "']];")
+        config.write_text("<?php return ['driver'=>'sqlite','auth_mail'=>['from'=>'login@example.test','public_url'=>'https://event.example.test/public/'],'stripe'=>['secret_key'=>'sk_test_fixture','webhook_secret'=>'" + WEBHOOK_SECRET + "']];")
+        self.mail_dir = directory / 'mail'
+        self.mail_dir.mkdir()
+        sendmail = directory / 'sendmail'
+        sendmail.write_text(f'#!/bin/sh\ncat > "$(mktemp {self.mail_dir}/message.XXXXXX)"\n')
+        sendmail.chmod(0o700)
         env = dict(os.environ, STAEVNE_CONFIG=str(config), STAEVNE_DB=str(database), STAEVNE_DEMO='0', STAEVNE_SECURE_COOKIE='0')
         subprocess.run([PHP, 'bin/admin.php', 'platform@example.test', 'Platform'], cwd=ROOT, env=env,
                        input=PASSWORD + '\n', text=True, capture_output=True, check=True)
@@ -68,7 +75,7 @@ class OrganizerTests(unittest.TestCase):
         self.log = (directory / 'server.log').open('w+')
         self.addCleanup(self.log.close)
         self.server = subprocess.Popen(
-            [PHP, '-d', 'session.save_path=' + str(directory), '-S', f'127.0.0.1:{port}', '-t', 'public'],
+            [PHP, '-d', 'session.save_path=' + str(directory), '-d', 'sendmail_path=' + str(sendmail), '-S', f'127.0.0.1:{port}', '-t', 'public'],
             cwd=ROOT, env=env, stdout=self.log, stderr=self.log
         )
         self.addCleanup(self.stop_server)
@@ -248,7 +255,7 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn('Sydstævnet', guest.request('?page=mine')[1])
 
         self.assertEqual(self.db.execute('PRAGMA foreign_key_check').fetchall(), [])
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 3)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 4)
 
     def stripe_webhook(self, event, valid=True):
         now = int(time.time())
@@ -326,6 +333,75 @@ class OrganizerTests(unittest.TestCase):
         self.assertEqual(self.stripe_webhook(refund), 204)
         self.assertIn('tre gratis stævner', client.post(path, 'event', id=0, **self.event_fields('Efter refusion'))[1])
         self.assertIn('Årsstævne 2', client.request('?page=admin')[1])
+
+    def last_login_mail(self, page):
+        files = list(self.mail_dir.glob('message.*'))
+        message = BytesParser(policy=policy.default).parsebytes(max(files, key=lambda item: item.stat().st_mtime_ns).read_bytes())
+        self.assertEqual(str(message['To']), 'links@example.test')
+        token = re.search(r'https://event\.example\.test/public/\?page=' + page + r'#([a-f0-9]{64})', message.get_content())
+        return token.group(1)
+
+    def test_auth_links(self):
+        owner = self.organizer('Login Test', 'links@example.test')
+        public = Browser(self.base)
+        login = public.request('?page=login')[1]
+        self.assertIn('Glemt kodeord?', login)
+        self.assertIn('Send mig et loginlink', login)
+
+        quick = '?page=quick-login'
+        known = public.post(quick + '&event=1', 'quick-login', email='links@example.test')[1]
+        unknown = public.post(quick, 'quick-login', email='ukendt@example.test')[1]
+        success = 'Hvis der findes en konto med den e-mailadresse, modtager du et link.'
+        self.assertIn(success, known)
+        self.assertIn(success, unknown)
+        self.assertEqual(len(list(self.mail_dir.glob('message.*'))), 1)
+
+        token = self.last_login_mail('login-confirm')
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        record = self.db.execute('SELECT token_hash, event_id FROM auth_links').fetchone()
+        self.assertEqual(record, (digest, 1))
+        self.assertEqual(public.request('?page=login-confirm')[0], 200)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM auth_links').fetchone()[0], 1)
+        self.assertIn('Bed om et nyt link', public.post('?page=reset-password', 'reset-password', token=token,
+                                                        password=PASSWORD, password_confirm=PASSWORD)[1])
+        _, html, url = public.post('?page=login-confirm', 'login-confirm', token=token)
+        self.assertIn('Du er logget ind', html)
+        self.assertIn('?event=1', url)
+        self.assertIn('Bed om et nyt link', Browser(self.base).post('?page=login-confirm', 'login-confirm', token=token)[1])
+
+        other_device = Browser(self.base)
+        other_device.post(quick, 'quick-login', email='links@example.test')
+        pending_quick = self.last_login_mail('login-confirm')
+        self.assertIn(success, other_device.post('?page=forgot', 'forgot', email='links@example.test')[1])
+        resetting = self.last_login_mail('reset-password')
+        new_password = 'new-local-test-password'
+        reset_url = '?page=reset-password'
+        _, html, _ = other_device.post(reset_url, 'reset-password', token=resetting,
+                                        password=new_password, password_confirm='different')
+        self.assertIn('det samme kodeord', html)
+        _, html, _ = other_device.post(reset_url, 'reset-password', token=resetting,
+                                        password=new_password, password_confirm=new_password)
+        self.assertIn('Dit kodeord er ændret', html)
+        self.assertEqual(owner.request('?page=admin')[0], 403)
+        self.assertEqual(public.request('?page=admin')[0], 403)
+        self.assertIn('Bed om et nyt link', other_device.post('?page=login-confirm', 'login-confirm', token=pending_quick)[1])
+        self.assertIn('Bed om et nyt link', other_device.post(reset_url, 'reset-password', token=resetting,
+                                                              password=new_password, password_confirm=new_password)[1])
+        self.assertIn('E-mail eller adgangskode er forkert', other_device.post('?page=login', 'login', email='links@example.test', password=PASSWORD)[1])
+        self.assertIn('Du er logget ind', other_device.post('?page=login', 'login', email='links@example.test', password=new_password)[1])
+
+        visitor = Browser(self.base)
+        self.assertIn(success, visitor.post(quick, 'quick-login', email='links@example.test')[1])
+        expired = self.last_login_mail('login-confirm')
+        self.db.execute('UPDATE auth_links SET expires_at=1 WHERE token_hash=?', (hashlib.sha256(expired.encode()).hexdigest(),))
+        self.db.commit()
+        self.assertIn('Bed om et nyt link', visitor.post('?page=login-confirm', 'login-confirm', token=expired)[1])
+        self.assertEqual(len(list(self.mail_dir.glob('message.*'))), 4)
+        rate_key = hashlib.sha256(b'auth-link-email|links@example.test').hexdigest()
+        self.db.execute('UPDATE login_attempts SET window=?,count=4 WHERE key=?', (int(time.time()) // 600, rate_key))
+        self.db.commit()
+        self.assertIn(success, visitor.post(quick, 'quick-login', email='links@example.test')[1])
+        self.assertEqual(len(list(self.mail_dir.glob('message.*'))), 4)
 
 
 if __name__ == '__main__':
