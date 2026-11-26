@@ -9,7 +9,7 @@ Dansk hjælperportal til dressur- og springstævner.
 ## Installation på Plesk eller andet PHP-webhotel
 
 1. Hent repositoryet til en mappe på webhotellet. Sæt domænets **Document root** i Plesk til projektets `public/`-mappe. PHP skal kunne læse de øvrige projektmapper, og `var/` skal være skrivbar for PHP. Databasen oprettes automatisk i `var/staevnevagt.sqlite`. Sørg for, at PHP og planlagte opgaver kører som samme bruger.
-2. Vælg PHP 8.2 eller nyere med `pdo_sqlite` og SQLite 3.35 eller nyere. Brug HTTPS. Sæt `upload_max_filesize` til mindst `3M` og `post_max_size` til mindst `8M` i PHP-indstillingerne for at kunne uploade to billeder ad gangen.
+2. Vælg PHP 8.2 eller nyere med `pdo_sqlite` og SQLite 3.7.17 eller nyere. Brug HTTPS. Sæt `upload_max_filesize` til mindst `3M` og `post_max_size` til mindst `8M` i PHP-indstillingerne for at kunne uploade to billeder ad gangen.
 3. Opret din overordnede administratorkonto fra projektmappen via SSH. Erstat e-mail og navn, og brug webhotellets PHP-binær, hvis den hedder noget andet end `php`.
 
    ```bash

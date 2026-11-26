@@ -19,7 +19,7 @@ function canManageEvents(?array $user): bool
 
 function createOrganizer(int $owner, string $name): void
 {
-    $created = query('INSERT INTO organizers (owner_id,name) VALUES (?,?) ON CONFLICT(owner_id) DO NOTHING', [$owner,$name])->rowCount();
+    $created = query('INSERT OR IGNORE INTO organizers (owner_id,name) VALUES (?,?)', [$owner,$name])->rowCount();
     if (!$created) {
         throw new InputError('Din profil er allerede knyttet til en arrangør.');
     }
