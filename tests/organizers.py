@@ -1,6 +1,9 @@
 """Run with python3 tests/organizers.py on a machine with PHP and pdo_sqlite."""
 import datetime
+import hashlib
+import hmac
 import http.cookiejar
+import json
 import os
 import re
 import socket
@@ -17,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PHP = os.environ.get('STAEVNE_TEST_PHP', 'php')
 PASSWORD = 'local-test-password'
+WEBHOOK_SECRET = 'whsec_local_test_fixture'
 
 
 class Browser:
@@ -52,7 +56,9 @@ class OrganizerTests(unittest.TestCase):
         self.day = (datetime.date.today() + datetime.timedelta(days=2)).isoformat()
         self.create_legacy_database()
 
-        env = dict(os.environ, STAEVNE_DB=str(database), STAEVNE_DEMO='0', STAEVNE_SECURE_COOKIE='0')
+        config = directory / 'config.php'
+        config.write_text("<?php return ['driver'=>'sqlite','stripe'=>['secret_key'=>'sk_test_fixture','webhook_secret'=>'" + WEBHOOK_SECRET + "']];")
+        env = dict(os.environ, STAEVNE_CONFIG=str(config), STAEVNE_DB=str(database), STAEVNE_DEMO='0', STAEVNE_SECURE_COOKIE='0')
         subprocess.run([PHP, 'bin/admin.php', 'platform@example.test', 'Platform'], cwd=ROOT, env=env,
                        input=PASSWORD + '\n', text=True, capture_output=True, check=True)
         with socket.socket() as listener:
@@ -167,8 +173,24 @@ class OrganizerTests(unittest.TestCase):
         self.assertNotIn('Nordstævnet', html)
         _, html, _ = guest.post('?page=register', 'register', name='Hjælper', email='helper@example.test', password=PASSWORD)
         self.assertIn('Din profil er oprettet', html)
-        for event, shift in ((north_event, north_shift), (south_event, south_shift)):
-            _, html, _ = guest.post(f'?event={event}', 'join', id=shift)
+        helper = self.db.execute("SELECT id FROM users WHERE email='helper@example.test'").fetchone()[0]
+        self.assertEqual(self.db.execute("SELECT status FROM helper_applications WHERE event_id=1 AND user_id=1").fetchone()[0], 'approved')
+        for event, shift, owner, wrong_owner in ((north_event, north_shift, first, second), (south_event, south_shift, second, first)):
+            event_url = f'?event={event}'
+            admin_url = f'?page=admin&event={event}'
+            _, html, _ = guest.post(event_url, 'join', id=shift)
+            self.assertIn('Arrangøren skal godkende dig', html)
+            _, html, _ = guest.post(event_url, 'apply')
+            self.assertIn('Din ansøgning er sendt', html)
+            self.assertEqual(wrong_owner.post(admin_url, 'application', '?page=admin', id=helper, decision='approved')[0], 403)
+            _, html, _ = owner.post(admin_url, 'application', id=helper, decision='rejected')
+            self.assertIn('Ansøgningen er afvist', html)
+            self.assertIn('Din ansøgning er afvist', guest.request(event_url)[1])
+            _, html, _ = guest.post(event_url, 'join', id=shift)
+            self.assertIn('Arrangøren skal godkende dig', html)
+            _, html, _ = owner.post(admin_url, 'application', id=helper, decision='approved')
+            self.assertIn('Hjælperen er godkendt', html)
+            _, html, _ = guest.post(event_url, 'join', id=shift)
             self.assertIn('Du er tilmeldt vagten', html)
         _, html, _ = guest.request('?page=mine')
         for name in ('Nordstævnet', 'Sydstævnet', 'Rideklub Nord', 'Rideklub Syd'):
@@ -226,7 +248,84 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn('Sydstævnet', guest.request('?page=mine')[1])
 
         self.assertEqual(self.db.execute('PRAGMA foreign_key_check').fetchall(), [])
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 2)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 3)
+
+    def stripe_webhook(self, event, valid=True):
+        now = int(time.time())
+        body = json.dumps(event).encode()
+        signature = hmac.new(WEBHOOK_SECRET.encode(), str(now).encode() + b'.' + body, hashlib.sha256).hexdigest()
+        request = urllib.request.Request(self.base + '?page=stripe-webhook', body, {
+            'Content-Type': 'application/json', 'Stripe-Signature': f't={now},v1={signature if valid else "invalid"}'
+        })
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
+
+    def test_billing(self):
+        client = self.organizer('Klub med betaling', 'billing@example.test')
+        organizer = self.db.execute("SELECT id FROM organizers WHERE name='Klub med betaling'").fetchone()[0]
+        for number in range(3):
+            self.create_event(client, f'Gratis stævne {number}')
+        path = '?page=admin&event=0'
+        blocked = client.post(path, 'event', id=0, **self.event_fields('Blokeret'))
+        self.assertIn('tre gratis stævner', blocked[1])
+        self.assertIn('?page=billing', blocked[2])
+        first_event = self.db.execute('SELECT MIN(id) FROM events WHERE organizer_id=?', (organizer,)).fetchone()[0]
+        delete_url = f'?page=delete&event={first_event}'
+        confirmation_url = delete_url + f'&kind=event&id={first_event}'
+        signature = re.search(r'name="confirmation" value="([a-f0-9]+)"', client.request(confirmation_url)[1]).group(1)
+        self.assertIn('Stævnet er slettet', client.post(delete_url, 'delete', confirmation_url, id=first_event,
+                                                       kind='event', confirmation=signature, confirm_delete=1)[1])
+        self.assertIn('tre gratis stævner', client.post(path, 'event', id=0, **self.event_fields('Stadig blokeret'))[1])
+
+        def order(plan, suffix, mode=0):
+            now = int(time.time())
+            order_id = str(suffix).zfill(32)
+            session = f'cs_test_fixture{suffix}'
+            self.db.execute('INSERT INTO billing_orders (id,organizer_id,plan,live_mode,price_id,session_id,expires_at,created_at) VALUES (?,?,?,?,?,?,?,?)',
+                            (order_id, organizer, plan, mode, 'price_fixture', session, now + 3600, now))
+            self.db.commit()
+            return {'type': 'checkout.session.completed', 'livemode': False, 'created': now, 'data': {'object': {
+                'id': session, 'mode': 'payment', 'payment_status': 'paid', 'amount_total': 7900 if plan == 'event' else 49900,
+                'payment_intent': f'pi_fixture{suffix}', 'metadata': {'staevnevagt_order': order_id}
+            }}}
+
+        event_order = order('event', 1)
+        self.assertNotIn('Betalingen er registreret', client.request('?page=billing&session_id=cs_test_fixture1')[1])
+        self.assertEqual(self.stripe_webhook(event_order, valid=False), 400)
+        unpaid = json.loads(json.dumps(event_order))
+        unpaid['data']['object']['payment_status'] = 'unpaid'
+        self.assertEqual(self.stripe_webhook(unpaid), 204)
+        self.assertIn('tre gratis stævner', client.post(path, 'event', id=0, **self.event_fields('Ubetalt'))[1])
+
+        for _ in range(2):
+            self.assertEqual(self.stripe_webhook(event_order), 204)
+        self.assertIn('Betalingen er registreret', client.request('?page=billing&session_id=cs_test_fixture1')[1])
+        self.create_event(client, 'Købt stævne')
+        self.assertIn('tre gratis stævner', client.post(path, 'event', id=0, **self.event_fields('Ekstra uden betaling'))[1])
+
+        wrong_mode = order('event', 2, 1)
+        self.assertEqual(self.stripe_webhook(wrong_mode), 204)
+        self.assertIn('tre gratis stævner', client.post(path, 'event', id=0, **self.event_fields('Forkert miljø'))[1])
+
+        annual_order = order('annual', 3)
+        self.assertEqual(self.stripe_webhook(annual_order), 204)
+        first_expiry = self.db.execute("SELECT access_until FROM billing_orders WHERE session_id='cs_test_fixture3'").fetchone()[0]
+        self.assertGreater(first_expiry - int(time.time()), 364 * 86400)
+        self.assertEqual(self.stripe_webhook(annual_order), 204)
+        self.assertEqual(self.db.execute("SELECT access_until FROM billing_orders WHERE session_id='cs_test_fixture3'").fetchone()[0], first_expiry)
+        self.create_event(client, 'Årsstævne 1')
+        self.create_event(client, 'Årsstævne 2')
+
+        charge = annual_order['data']['object']
+        refund = {'type':'charge.refunded','livemode':False,'data':{'object':{
+            'refunded':True, 'metadata':charge['metadata'], 'payment_intent':charge['payment_intent']
+        }}}
+        self.assertEqual(self.stripe_webhook(refund), 204)
+        self.assertIn('tre gratis stævner', client.post(path, 'event', id=0, **self.event_fields('Efter refusion'))[1])
+        self.assertIn('Årsstævne 2', client.request('?page=admin')[1])
 
 
 if __name__ == '__main__':

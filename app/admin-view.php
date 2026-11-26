@@ -3,6 +3,11 @@ $adminLink = '?page=admin&event=' . $eventId;
 $eventForm = $event ?? ['name'=>'','discipline'=>'spring','location'=>'','starts_on'=>'','ends_on'=>'','description'=>'','visible'=>0];
 $groupList = $event ? query('SELECT * FROM `groups` WHERE event_id=? ORDER BY id', [$eventId])->fetchAll() : [];
 $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
+$applications = $event ? query("SELECT a.*,u.name,u.email FROM helper_applications a JOIN users u ON u.id=a.user_id
+    WHERE a.event_id=? ORDER BY a.requested_at,a.user_id", [$eventId])->fetchAll() : [];
+$pending = array_filter($applications, fn(array $entry): bool => $entry['status'] === 'pending');
+$usage = !$event && !empty($user['organizer_id']) ? billingUsage($user['organizer_id']) : null;
+$needsPayment = $usage && !$usage['free'] && !$usage['credits'] && $usage['annual'] <= time();
 ?>
 <section class="interior admin-page">
     <div class="page-heading">
@@ -23,10 +28,17 @@ $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
                 <?php endif; ?>
             </div>
             <?php endif; ?>
+            <?php if ($event && $pending): ?><a class="button secondary" href="#ansoegninger">Ansøgninger (<?= count($pending) ?>)</a><?php endif; ?>
             <?php if ($event): ?><a class="button primary" href="?page=admin&amp;event=0<?= $organizerFilter ? '&amp;organizer=' . $organizerFilter : '' ?>"><?= icon('plus', 18) ?> Nyt stævne</a><?php endif; ?>
         </div>
     </div>
-    <?php if (!$event): ?>
+    <?php if ($needsPayment): ?>
+        <section class="panel admin-section event-create">
+            <h2>Opret stævne</h2>
+            <p>I har brugt de tre gratis stævner. Køb ét ekstra stævne eller årsadgang.</p>
+            <a class="button primary" href="?page=billing">Se betalingsmuligheder</a>
+        </section>
+    <?php elseif (!$event): ?>
         <section class="panel admin-section event-create">
             <h2>Opret stævne</h2>
             <?php eventAdminForm($adminLink, $eventForm, $eventId, $isAdmin, $organizerOptions, $selectedOrganizer); ?>
@@ -89,6 +101,7 @@ $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
             $contacts = query('SELECT * FROM contacts WHERE event_id=? ORDER BY LOWER(name),id', [$eventId])->fetchAll();
         ?>
         <aside class="sidebar">
+        <?php require __DIR__ . '/admin-applications-view.php'; ?>
         <details class="panel settings-card">
             <summary class="panel-heading">
                 <span class="tile"><?= icon('settings', 19) ?></span>
