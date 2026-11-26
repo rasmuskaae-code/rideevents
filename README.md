@@ -83,4 +83,4 @@ Kommandoen bruger SQLite på en installation uden `config.php`. Åbn [localhost:
 
 Kør `python3 tests/organizers.py` for at teste arrangøradgang, tilmeldinger på tværs og automatisk databaseopgradering. Testen bruger en separat, midlertidig database.
 
-Skrifttyperne DM Sans og Playfair Display leveres med deres licenser i `licenses/`.
+Skrifttypen DM Sans leveres med licens i `licenses/`.
