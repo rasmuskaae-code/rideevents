@@ -4,7 +4,16 @@ CREATE TABLE organizers (
     owner_id INTEGER UNIQUE REFERENCES users(id),
     active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))
 );
-CREATE UNIQUE INDEX organizers_platform ON organizers ((1)) WHERE owner_id IS NULL;
+CREATE TRIGGER organizers_platform_unique_on_insert BEFORE INSERT ON organizers
+WHEN NEW.owner_id IS NULL AND EXISTS (SELECT 1 FROM organizers WHERE owner_id IS NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'The platform organizer already exists');
+END;
+CREATE TRIGGER organizers_platform_unique_on_update BEFORE UPDATE OF owner_id ON organizers
+WHEN NEW.owner_id IS NULL AND EXISTS (SELECT 1 FROM organizers WHERE owner_id IS NULL AND id <> OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'The platform organizer already exists');
+END;
 INSERT INTO organizers (name) VALUES ('Stævnevagt');
 
 ALTER TABLE events ADD COLUMN organizer_id INTEGER REFERENCES organizers(id);

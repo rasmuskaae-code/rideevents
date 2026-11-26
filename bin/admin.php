@@ -18,7 +18,7 @@ if (strlen($password) < 8 || strlen($password) > 72 || str_contains($password, "
     exit(1);
 }
 
-$created = query("INSERT INTO users (name,email,password,role) VALUES (?,?,?,'admin') ON CONFLICT(email) DO NOTHING",
+$created = query("INSERT OR IGNORE INTO users (name,email,password,role) VALUES (?,?,?,'admin')",
     [$name,$email,password_hash($password, PASSWORD_DEFAULT)])->rowCount();
 if (!$created) {
     fwrite(STDERR, "Der findes allerede en konto med den e-mailadresse.\n");

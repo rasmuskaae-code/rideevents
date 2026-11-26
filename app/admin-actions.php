@@ -130,12 +130,14 @@ function saveGroupImages(int $group): bool
         if (!$info || !in_array($info['mime'], ['image/jpeg','image/png','image/webp'], true)) {
             throw new InputError('Vælg et billede i JPG-, PNG- eller WebP-format.');
         }
-        $statement = db()->prepare('INSERT INTO images (group_id,position,mime,data) VALUES (?,?,?,?)
-            ON CONFLICT(group_id,position) DO UPDATE SET mime=excluded.mime,data=excluded.data');
-        $statement->bindValue(1, $group, PDO::PARAM_INT);
-        $statement->bindValue(2, $position, PDO::PARAM_INT);
-        $statement->bindValue(3, $info['mime']);
-        $statement->bindValue(4, file_get_contents($upload['tmp_name']), PDO::PARAM_LOB);
+        $existing = row('SELECT id FROM images WHERE group_id=? AND position=?', [$group,$position]);
+        $statement = db()->prepare($existing
+            ? 'UPDATE images SET mime=?,data=? WHERE group_id=? AND position=?'
+            : 'INSERT INTO images (mime,data,group_id,position) VALUES (?,?,?,?)');
+        $statement->bindValue(1, $info['mime']);
+        $statement->bindValue(2, file_get_contents($upload['tmp_name']), PDO::PARAM_LOB);
+        $statement->bindValue(3, $group, PDO::PARAM_INT);
+        $statement->bindValue(4, $position, PDO::PARAM_INT);
         $statement->execute();
         $changed = true;
     }

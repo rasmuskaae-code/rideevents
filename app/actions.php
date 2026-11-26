@@ -96,7 +96,7 @@ function handlePost(?array $user, int $eventId, string $page): never
                 $organizerName = $action === 'organizer' ? field('organizer_name', 'Arrangørens navn', 160) : null;
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 $id = atomic(function () use ($name, $email, $hash, $organizerName): int {
-                    $created = query('INSERT INTO users (name,email,password) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING',
+                    $created = query('INSERT OR IGNORE INTO users (name,email,password) VALUES (?,?,?)',
                         [$name,$email,$hash])->rowCount();
                     if (!$created) {
                         throw new InputError('E-mailadressen er allerede i brug. Prøv at logge ind.');
@@ -110,11 +110,12 @@ function handlePost(?array $user, int $eventId, string $page): never
             } else {
                 $key = hash('sha256', $email . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
                 $window = intdiv(time(), 600);
-                $attempts = query(
-                    'INSERT INTO login_attempts (key,window,count) VALUES (?,?,1)
-                     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN window = excluded.window THEN count+1 ELSE 1 END, window = excluded.window
-                     RETURNING count', [$key, $window]
-                )->fetchColumn();
+                $attempts = atomic(function () use ($key, $window): int {
+                    query('INSERT OR IGNORE INTO login_attempts (key,window,count) VALUES (?,?,0)', [$key,$window]);
+                    query('UPDATE login_attempts SET count = CASE WHEN window = ? THEN count + 1 ELSE 1 END, window = ? WHERE key = ?',
+                        [$window,$window,$key]);
+                    return (int) query('SELECT count FROM login_attempts WHERE key=?', [$key])->fetchColumn();
+                });
                 if ($attempts > 12) {
                     throw new InputError('For mange loginforsøg. Prøv igen om lidt.');
                 }
