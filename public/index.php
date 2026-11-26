@@ -33,7 +33,7 @@ if ($demo) {
 
 $queryId = (int) ($_GET['event'] ?? 0);
 $page = $_GET['page'] ?? 'events';
-$page = in_array($page, ['events','admin','platform','login','register','organizer','mine','notices','image'], true) ? $page : 'events';
+$page = in_array($page, ['events','admin','delete','export','platform','login','register','organizer','mine','notices','image'], true) ? $page : 'events';
 
 if ($page === 'image') {
     $userId = $user['id'] ?? 0;
@@ -54,6 +54,23 @@ if ($page === 'image') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     handlePost($user, $queryId, $page);
+}
+if ($page === 'export') {
+    require dirname(__DIR__) . '/app/admin-export.php';
+    exportHelpers($user, $queryId, $_GET['format'] ?? '');
+}
+
+$confirmationEvent = null;
+if ($page === 'delete') {
+    require dirname(__DIR__) . '/app/admin-delete.php';
+    $deleteKind = is_string($_GET['kind'] ?? null) ? $_GET['kind'] : '';
+    $confirmationEvent = $canManage ? managedEvent($queryId, $user) : null;
+    $deleteTarget = $confirmationEvent ? deletionTarget($confirmationEvent, $deleteKind, (int) ($_GET['id'] ?? 0)) : null;
+    if (!$deleteTarget) {
+        http_response_code($canManage ? 404 : 403);
+        $page = 'forbidden';
+        $confirmationEvent = null;
+    }
 }
 if (($page === 'admin' && !$canManage) || ($page === 'platform' && !$isAdmin)) {
     http_response_code(403);
@@ -103,7 +120,7 @@ if ($page === 'admin') {
 $events = query($eventSql . ' ORDER BY e.starts_on,e.id', $args)->fetchAll();
 $eventsById = array_column($events, null, 'id');
 $today = date('Y-m-d');
-$event = $eventsById[$queryId] ?? null;
+$event = $confirmationEvent ?? ($eventsById[$queryId] ?? null);
 if ($page === 'admin' && $queryId > 0 && !$event) {
     http_response_code(404);
     $page = 'forbidden';
@@ -124,6 +141,7 @@ $unread = $user ? (int) query('SELECT COUNT(*) FROM notices WHERE user_id=? AND 
 $title = match ($page) {
     'admin' => 'Stævneadmin',
     'platform' => 'Platformadmin',
+    'delete' => 'Bekræft sletning',
     'organizer' => 'Opret arrangør',
     'login' => 'Log ind',
     'register' => 'Opret bruger',
@@ -171,6 +189,8 @@ if ($page === 'events') {
     require dirname(__DIR__) . '/app/events-view.php';
 } elseif ($page === 'admin') {
     require dirname(__DIR__) . '/app/admin-view.php';
+} elseif ($page === 'delete') {
+    require dirname(__DIR__) . '/app/admin-delete-view.php';
 } elseif ($page === 'platform') {
     require dirname(__DIR__) . '/app/platform-view.php';
 } else {

@@ -189,6 +189,14 @@ function handlePost(?array $user, int $eventId, string $page): never
 
         require __DIR__ . '/admin-actions.php';
         $savedEvent = atomic(fn() => saveAdmin($action, $eventId, $user));
+        if ($action === 'delete') {
+            $label = match (input('kind')) {
+                'event' => 'Stævnet',
+                'group' => 'Gruppen',
+                'shift' => 'Posten',
+            };
+            go($savedEvent ? $adminLink . '#groups-heading' : '?page=admin', "$label er slettet.");
+        }
         go('?page=admin&event=' . $savedEvent . ($action === 'contact' ? '#kontakter' : ''), 'Ændringen er gemt.');
     } catch (AccessDenied) {
         http_response_code(403);
@@ -197,7 +205,7 @@ function handlePost(?array $user, int $eventId, string $page): never
         $_SESSION['flash'] = ['error', $error->getMessage()];
         go(match ($page) {
             'register', 'login', 'organizer' => '?page=' . $page . '&event=' . $eventId,
-            'admin' => $adminLink,
+            'admin', 'delete' => $adminLink,
             'platform' => '?page=platform',
             default => $eventLink,
         });

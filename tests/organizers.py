@@ -204,6 +204,27 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn('Ændringen er gemt', html)
         self.assertIn('Historisk stævne', second.request('?page=admin&event=1')[1])
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM signups WHERE shift_id=1').fetchone()[0], 1)
+        self.assertEqual(Browser(self.base).request(f'?page=export&event={north_event}&format=pdf')[0], 403)
+        self.assertEqual(guest.request(f'?page=export&event={north_event}&format=pdf')[0], 404)
+        self.assertEqual(second.request(f'?page=export&event={north_event}&format=xlsx')[0], 404)
+        event_delete = f'?page=delete&event={north_event}'
+        confirmation_page = event_delete + f'&kind=event&id={north_event}'
+        status, confirmation_html, _ = first.request(confirmation_page)
+        self.assertEqual(status, 200)
+        self.assertIn('Nordstævnet', confirmation_html)
+        confirmation = re.search(r'name="confirmation" value="([a-f0-9]+)"', confirmation_html).group(1)
+        fields = dict(id=north_event, kind='event', confirmation=confirmation)
+        self.assertEqual(second.post(event_delete, 'delete', south_admin, **fields, confirm_delete=1)[0], 403)
+        _, html, _ = first.post(event_delete, 'delete', confirmation_page, **fields)
+        self.assertIn('bekræftelse mangler', html)
+        self.assertIn('Nordstævnet', first.request(north_admin)[1])
+        _, html, _ = first.post(event_delete, 'delete', confirmation_page, **fields, confirm_delete=1)
+        self.assertIn('Stævnet er slettet', html)
+        self.assertEqual(first.request(north_admin)[0], 404)
+        self.assertNotIn('Nordstævnet · Rideklub Nord', guest.request('?page=mine')[1])
+        self.assertIn('Stævnet Nordstævnet er slettet', guest.request('?page=notices')[1])
+        self.assertIn('Sydstævnet', guest.request('?page=mine')[1])
+
         self.assertEqual(self.db.execute('PRAGMA foreign_key_check').fetchall(), [])
         self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 2)
 

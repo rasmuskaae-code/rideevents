@@ -27,6 +27,14 @@ Dansk hjælperportal til dressur- og springstævner.
 
 5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den bruger samme `config.php` og opretter påmindelser ud fra de gemte vagttider.
 
+### Redigering, sletning og eksport
+
+Vælg et stævne under **Stævneadmin**. Brug **Gem stævne** for at redigere stævnet. Åbn en vagtgruppe eller post for at gemme ændringer eller slette den. Sletning kræver en særskilt bekræftelse og fjerner de berørte tilmeldinger. Tilmeldte hjælpere får besked. Sletning af et stævne fjerner også den private kontaktliste til stævnet.
+
+Under **Hjælperoversigt** kan du hente en PDF eller en Excel-fil med vagtgrupper, poster, start og slut, hjælpernes navne og e-mails samt antal tilmeldte og pladser. Ledige poster fremgår også, og Excel-filen kan filtreres. Eksporten er tilgængelig for stævnets arrangør og platformadministratorer.
+
+Aktivér PHP-udvidelserne `mbstring` og `zlib` til PDF og `zip` til Excel på Plesk. PDF-biblioteket og skrifttypen ligger under `app/vendor/tfpdf/` med deres respektive licenser.
+
 ### Flyt en eksisterende SQLite-installation til MySQL eller MariaDB
 
 1. Stop webadgang og det planlagte notifikationsjob midlertidigt, så der ikke kommer nye ændringer under flytningen. Tag en backup af SQLite-databasen.
