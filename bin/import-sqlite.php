@@ -22,8 +22,8 @@ try {
     ]);
     $sqlite->beginTransaction();
     $version = (int) $sqlite->query('PRAGMA user_version')->fetchColumn();
-    if (!in_array($version, [1,2], true)) {
-        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1 eller 2.');
+    if (!in_array($version, [1,2,3], true)) {
+        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1, 2 eller 3.');
     }
 
     $mysql = db();
@@ -40,6 +40,9 @@ try {
             'contacts' => 'id,event_id,name,contact,task',
             'notices' => 'id,user_id,title,body,created_at,read_at,mail_sent_at,reminder_key',
             'login_attempts' => '`key`,`window`,`count`',
+            'helper_applications' => 'event_id,user_id,status,requested_at,decided_at',
+            'organizer_event_usage' => 'organizer_id,created_count',
+            'billing_orders' => 'id,organizer_id,plan,live_mode,price_id,session_id,payment_intent,checkout_url,expires_at,created_at,closed_at,paid_at,access_until,consumed_at,refunded_at',
         ];
         $assertEmpty = static function () use ($tables): int {
             $organizers = query('SELECT id,name,owner_id,active FROM organizers')->fetchAll();
@@ -64,13 +67,13 @@ try {
 
         $counts = atomic(function () use ($assertEmpty, $tables, $mysql, $sqlite, $version): array {
             $platform = $assertEmpty();
-            if ($version === 2) {
+            if ($version >= 2) {
                 query('DELETE FROM organizers WHERE id=?', [$platform]);
             }
 
             $counts = [];
             foreach ($tables as $table => $columns) {
-                if ($version === 1 && $table === 'organizers') {
+                if (($version === 1 && $table === 'organizers') || ($version < 3 && in_array($table, ['helper_applications','organizer_event_usage','billing_orders'], true))) {
                     continue;
                 }
 
@@ -95,6 +98,9 @@ try {
                     $count++;
                 }
                 $counts[$table] = $count;
+            }
+            if ($version < 3) {
+                runMysqlSql($mysql, dirname(__DIR__) . '/app/migrations/access-and-billing-backfill.sql');
             }
             if (!row('SELECT id FROM organizers WHERE owner_id IS NULL')) {
                 throw new RuntimeException('SQLite-databasen mangler platformarrangøren.');

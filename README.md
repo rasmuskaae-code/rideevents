@@ -27,6 +27,19 @@ Dansk hjælperportal til dressur- og springstævner.
 
 5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den bruger samme `config.php` og opretter påmindelser ud fra de gemte vagttider.
 
+### Betaling med Stripe
+
+De første **tre oprettede stævner pr. arrangør er gratis**. Stævner, der allerede findes, tæller med. Sletning gendanner hverken en gratis plads eller et købt stævne. De foreslåede priser er **79 DKK for ét ekstra stævne** og **499 DKK for årsadgang**. Årsadgangen giver ubegrænset oprettelse i 12 måneder og fornyes med et nyt køb. Hjælpere betaler ikke. Platformens egen arrangør er fritaget.
+
+1. Aktivér PHP-udvidelsen `curl`. Tilføj `stripe`-afsnittet fra `config.example.php` til din lokale `config.php`, og udfyld `public_url` med den fulde HTTPS-adresse til forsiden, f.eks. `https://event.coursetool.org/public/`. Angiv din hemmelige Stripe-nøgle i `secret_key`. Brug Stripe-testtilstand med en separat database til afprøvning.
+2. Kør `php bin/stripe-prices.php test` eller `php bin/stripe-prices.php live` fra projektmappen. Kommandoen opretter eller genbruger de to engangspriser i det valgte Stripe-miljø. Kopiér de returnerede pris-ID’er til `event_price` og `annual_price` i `config.php`. Du kan også sætte dine egne Stripe-priser til de to engangsprodukter.
+3. I Stripe opretter du et webhook til din forside med `?page=stripe-webhook` til sidst. Vælg hændelserne `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.expired` og `charge.refunded`. Kopiér webhookets underskriftshemmelighed til `webhook_secret` i `config.php`. Pris-ID’er, API-nøgle og webhook skal høre til samme Stripe-miljø.
+4. Åbn **Betaling** som arrangør. Stripe viser den gældende pris i Checkout. Stævnevagt giver adgang, når Stripe har bekræftet betalingen via webhook. En fuld refusion fjerner ubrugt adgang, og stævner, der allerede er oprettet, bevares.
+
+### Godkendelse af hjælpere
+
+På et offentligt stævne kan en hjælper trykke **Ansøg som hjælper**. Under **Hjælperansøgninger** i Stævneadmin kan arrangøren godkende eller afvise ansøgningen. Hjælperen får besked og kan først tilmelde sig vagter, når arrangøren har godkendt ansøgningen. Godkendelsen gælder det enkelte stævne. Eksisterende tilmeldinger bevares og bliver automatisk godkendt ved opgraderingen.
+
 ### Redigering, sletning og eksport
 
 Vælg et stævne under **Stævneadmin**. Brug **Gem stævne** for at redigere stævnet. Åbn en vagtgruppe eller post for at gemme ændringer eller slette den. Sletning kræver en særskilt bekræftelse og fjerner de berørte tilmeldinger. Tilmeldte hjælpere får besked. Sletning af et stævne fjerner også den private kontaktliste til stævnet.

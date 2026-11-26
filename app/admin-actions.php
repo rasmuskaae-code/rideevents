@@ -10,6 +10,10 @@ function saveAdmin(string $action, int $eventId, array $user): int
     if (!$creatingEvent && !$event) {
         throw new AccessDenied();
     }
+    if ($action === 'application') {
+        decideHelperApplication($event, $id, input('decision'));
+        return $eventId;
+    }
     if ($action === 'delete') {
         require_once __DIR__ . '/admin-delete.php';
         return deleteAdminItem($event, input('kind'), $id);
@@ -37,6 +41,7 @@ function saveAdmin(string $action, int $eventId, array $user): int
         $values = [field('name', 'Stævnenavn', 160), $discipline, field('location', 'Sted', 200), $starts, $ends,
             field('description', 'Beskrivelse', 2500, false), flag('visible'), $organizer['id']];
         if ($creatingEvent) {
+            consumeEventAllowance($organizer['id']);
             query('INSERT INTO events (name,discipline,location,starts_on,ends_on,description,visible,organizer_id) VALUES (?,?,?,?,?,?,?,?)', $values);
             $eventId = (int) db()->lastInsertId();
             if (flag('presets')) {

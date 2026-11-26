@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-function databaseConfig(): array
+function appConfig(): array
 {
     static $config;
     if ($config !== null) {
@@ -14,7 +14,21 @@ function databaseConfig(): array
         throw new RuntimeException('Konfigurationsfilen angivet i STAEVNE_CONFIG findes ikke.');
     }
     $settings = is_file($file) ? require $file : ['driver' => 'sqlite'];
-    if (!is_array($settings) || !in_array($settings['driver'] ?? '', ['sqlite', 'mysql'], true)) {
+    if (!is_array($settings)) {
+        throw new RuntimeException('config.php skal returnere en liste med indstillinger.');
+    }
+    return $config = $settings;
+}
+
+function databaseConfig(): array
+{
+    static $config;
+    if ($config !== null) {
+        return $config;
+    }
+    $settings = appConfig();
+    $settings['driver'] ??= 'sqlite';
+    if (!in_array($settings['driver'], ['sqlite', 'mysql'], true)) {
         throw new RuntimeException('Vælg driveren sqlite eller mysql i config.php.');
     }
     if ($settings['driver'] === 'mysql') {
@@ -92,47 +106,64 @@ function db(): PDO
 
 function initializeSqlite(PDO $pdo): void
 {
-    $migrations = [1 => __DIR__ . '/schema.sql', 2 => __DIR__ . '/migrations/002-organizers.sql'];
+    $migrations = [
+        1 => [__DIR__ . '/schema.sql'],
+        2 => [__DIR__ . '/migrations/002-organizers.sql'],
+        3 => [__DIR__ . '/migrations/003-access-and-billing.sql', __DIR__ . '/migrations/access-and-billing-backfill.sql'],
+    ];
     if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() >= array_key_last($migrations)) {
         return;
     }
     transaction($pdo, function () use ($pdo, $migrations): void {
         $version = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
-        foreach ($migrations as $target => $file) {
+        foreach ($migrations as $target => $files) {
             if ($version < $target) {
-                $pdo->exec(file_get_contents($file));
+                foreach ($files as $file) {
+                    $pdo->exec(file_get_contents($file));
+                }
                 $pdo->exec('PRAGMA user_version = ' . $target);
             }
         }
     });
 }
 
-function mysqlHasSchema(PDO $pdo): bool
+function mysqlSchemaVersion(PDO $pdo): int
 {
     $exists = $pdo->query("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='staevne_schema'")->fetchColumn();
-    return $exists && (int) $pdo->query('SELECT MAX(version) FROM staevne_schema')->fetchColumn() >= 1;
+    return $exists ? (int) $pdo->query('SELECT MAX(version) FROM staevne_schema')->fetchColumn() : 0;
+}
+
+function runMysqlSql(PDO $pdo, string $file): void
+{
+    foreach (explode(';', file_get_contents($file)) as $statement) {
+        if (trim($statement) !== '') {
+            $pdo->exec($statement);
+        }
+    }
 }
 
 function initializeMysql(PDO $pdo): void
 {
-    if (mysqlHasSchema($pdo)) {
+    if (mysqlSchemaVersion($pdo) >= 2) {
         return;
     }
     $lock = mysqlLock($pdo, 'schema', 20) ?? throw new RuntimeException('Databasen klargøres af en anden proces.');
     try {
-        if (mysqlHasSchema($pdo)) {
-            return;
+        $version = mysqlSchemaVersion($pdo);
+        if ($version < 1) {
+            runMysqlSql($pdo, __DIR__ . '/schema-mysql.sql');
+            transaction($pdo, function () use ($pdo): void {
+                $pdo->exec("INSERT INTO organizers (name) VALUES ('Stævnevagt')");
+                $pdo->exec('INSERT INTO staevne_schema (version) VALUES (1)');
+            });
         }
-        $statements = explode(';', file_get_contents(__DIR__ . '/schema-mysql.sql'));
-        foreach ($statements as $statement) {
-            if (trim($statement) !== '') {
-                $pdo->exec($statement);
-            }
+        if ($version < 2) {
+            runMysqlSql($pdo, __DIR__ . '/migrations/002-access-and-billing-mysql.sql');
+            transaction($pdo, function () use ($pdo): void {
+                runMysqlSql($pdo, __DIR__ . '/migrations/access-and-billing-backfill.sql');
+                $pdo->exec('INSERT INTO staevne_schema (version) VALUES (2)');
+            });
         }
-        transaction($pdo, function () use ($pdo): void {
-            $pdo->exec("INSERT INTO organizers (name) VALUES ('Stævnevagt')");
-            $pdo->exec('INSERT INTO staevne_schema (version) VALUES (1)');
-        });
     } finally {
         releaseMysqlLock($pdo, $lock);
     }

@@ -8,6 +8,11 @@
         (SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id AND s.user_id=?) AS mine
         FROM shifts v JOIN `groups` g ON g.id=v.group_id
         WHERE g.event_id=? AND g.visible=1 AND v.visible=1 ORDER BY v.starts_at,v.id', [$user['id'] ?? 0, $eventId])->fetchAll();
+    $application = $user && !$isAdmin
+        ? row('SELECT status FROM helper_applications WHERE event_id=? AND user_id=?', [$eventId,$user['id']])
+        : null;
+    $applicationStatus = $application['status'] ?? '';
+    $approved = $applicationStatus === 'approved';
     $now = time();
     $byGroup = $openByGroup = [];
     $availableSpots = 0;
@@ -37,6 +42,31 @@
     </form>
     </div>
 </div>
+<?php if (!$isAdmin && ($applicationStatus !== '' || $event['ends_on'] >= $today)): ?>
+<section class="panel application-banner" aria-labelledby="application-heading">
+    <div>
+        <h2 id="application-heading"><?= match ($applicationStatus) {
+            'approved' => 'Du er godkendt som hjælper',
+            'pending' => 'Din ansøgning afventer svar',
+            'rejected' => 'Din ansøgning er afvist',
+            default => 'Vil du hjælpe ved stævnet?',
+        } ?></h2>
+        <p><?= match ($applicationStatus) {
+            'approved' => 'Vælg en ledig vagt herunder.',
+            'pending' => 'Du får besked, når arrangøren har svaret.',
+            'rejected' => 'Kontakt arrangøren, hvis du har spørgsmål.',
+            default => 'Send en ansøgning til arrangøren. Når du er godkendt, kan du tilmelde dig vagter.',
+        } ?></p>
+    </div>
+    <?php if ($applicationStatus === ''): ?>
+        <?php if ($user): ?>
+            <form method="post" action="<?= e($eventLink) ?>"><?php csrf('apply'); ?><button class="button primary" type="submit">Ansøg som hjælper</button></form>
+        <?php else: ?>
+            <a class="button primary" href="?page=login&amp;event=<?= $eventId ?>">Log ind for at ansøge</a>
+        <?php endif; ?>
+    <?php endif; ?>
+</section>
+<?php endif; ?>
 <?php metricStrip([
     ['flag', 'Åbne poster', array_sum($openByGroup)],
     ['users', 'Ledige pladser', $availableSpots],
@@ -67,9 +97,8 @@
                     <h3 class="shift-name"><?= e($shift['name']) ?></h3>
                     <span class="shift-time"><?= icon('clock', 14) ?> <?= e(shiftDate($shift)) ?></span>
                     <span class="status <?= $canJoin || $shift['mine'] ? 'available' : '' ?>"><?= $shift['mine'] ? icon('check', 14) . ' Tilmeldt' : ($over ? 'Startet' : (!$shift['bookable'] ? 'Lukket' : ($spots > 0 ? $spots . ' ' . ($spots === 1 ? 'ledig plads' : 'ledige') : 'Fuldt booket'))) ?></span>
-                    <?php if ($canJoin && !$shift['mine'] && !$isAdmin): ?>
-                        <?php if ($user): ?><form method="post" action="<?= e($eventLink) ?>"><?php csrf('join', $shift['id']); ?><button class="button primary small" type="submit" aria-label="Tilmeld <?= e($shift['name']) ?>">Tilmeld</button></form>
-                        <?php else: ?><a class="button primary small" href="?page=login&amp;event=<?= $eventId ?>" aria-label="Log ind for at tilmelde <?= e($shift['name']) ?>">Tilmeld</a><?php endif; ?>
+                    <?php if ($canJoin && !$shift['mine'] && $approved): ?>
+                        <form method="post" action="<?= e($eventLink) ?>"><?php csrf('join', $shift['id']); ?><button class="button primary small" type="submit" aria-label="Tilmeld <?= e($shift['name']) ?>">Tilmeld</button></form>
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
@@ -97,7 +126,7 @@
             <span class="tile"><?= icon('user', 20) ?></span>
             <div>
                 <h2>Første gang som hjælper?</h2>
-                <p>Med en profil kan du tilmelde dig og få besked om ændringer.</p>
+                <p>Med en profil kan du ansøge og få besked fra arrangøren.</p>
                 <a class="text-link" href="?page=register&amp;event=<?= $eventId ?>">Opret bruger</a>
             </div>
         </section><?php endif; ?>

@@ -142,6 +142,15 @@ function handlePost(?array $user, int $eventId, string $page): never
             go('?page=login&event=' . $eventId, 'Log ind for at fortsætte.');
         }
 
+        if ($action === 'buy') {
+            startCheckout($user, input('plan'));
+        }
+
+        if ($action === 'apply') {
+            applyAsHelper($user, $eventId);
+            go($eventLink, 'Din ansøgning er sendt til arrangøren.');
+        }
+
         if ($action === 'join' && $user['role'] === 'helper') {
             atomic(function () use ($eventId, $user): void {
                 lockedRow('SELECT id FROM events WHERE id=?', [$eventId]);
@@ -150,6 +159,9 @@ function handlePost(?array $user, int $eventId, string $page): never
                     JOIN organizers o ON o.id=e.organizer_id
                     WHERE v.id=? AND e.id=? AND v.visible=1 AND v.bookable=1 AND g.visible=1 AND e.visible=1 AND o.active=1',
                     [(int) input('id'), $eventId]) ?? throw new InputError('Vi kunne ikke finde det valgte element.');
+                if (!row("SELECT user_id FROM helper_applications WHERE event_id=? AND user_id=? AND status='approved'", [$eventId,$user['id']])) {
+                    throw new InputError('Arrangøren skal godkende dig, før du kan tilmelde dig en vagt.');
+                }
                 if ($shift['starts_at'] <= time()) {
                     throw new InputError('Vagten er allerede begyndt.');
                 }
@@ -160,12 +172,7 @@ function handlePost(?array $user, int $eventId, string $page): never
                     throw new InputError('Alle pladser er taget.');
                 }
                 query('INSERT INTO signups (user_id, shift_id, created_at) VALUES (?,?,?)', [$user['id'], $shift['id'], time()]);
-                $recipients = $shift['owner_id'] === null
-                    ? query("SELECT id FROM users WHERE role='admin'")->fetchAll(PDO::FETCH_COLUMN)
-                    : [$shift['owner_id']];
-                foreach ($recipients as $recipient) {
-                    notify($recipient, 'Ny tilmelding', "{$user['name']} har tilmeldt sig {$shift['name']} ved {$shift['event_name']} ({$shift['organizer_name']}).");
-                }
+                notifyOrganizer($shift['owner_id'], 'Ny tilmelding', "{$user['name']} har tilmeldt sig {$shift['name']} ved {$shift['event_name']} ({$shift['organizer_name']}).");
             });
             go($eventLink, 'Du er tilmeldt vagten.');
         }
@@ -189,6 +196,9 @@ function handlePost(?array $user, int $eventId, string $page): never
 
         require __DIR__ . '/admin-actions.php';
         $savedEvent = atomic(fn() => saveAdmin($action, $eventId, $user));
+        if ($action === 'application') {
+            go($adminLink . '#ansoegninger', input('decision') === 'approved' ? 'Hjælperen er godkendt.' : 'Ansøgningen er afvist.');
+        }
         if ($action === 'delete') {
             $label = match (input('kind')) {
                 'event' => 'Stævnet',
@@ -198,6 +208,9 @@ function handlePost(?array $user, int $eventId, string $page): never
             go($savedEvent ? $adminLink . '#groups-heading' : '?page=admin', "$label er slettet.");
         }
         go('?page=admin&event=' . $savedEvent . ($action === 'contact' ? '#kontakter' : ''), 'Ændringen er gemt.');
+    } catch (BillingLimit $error) {
+        $_SESSION['flash'] = ['error', $error->getMessage()];
+        go(isPlatformAdmin($user) ? $adminLink : '?page=billing');
     } catch (AccessDenied) {
         http_response_code(403);
         exit('Du har ikke adgang til denne handling.');
@@ -207,6 +220,7 @@ function handlePost(?array $user, int $eventId, string $page): never
             'register', 'login', 'organizer' => '?page=' . $page . '&event=' . $eventId,
             'admin', 'delete' => $adminLink,
             'platform' => '?page=platform',
+            'billing' => '?page=billing',
             default => $eventLink,
         });
     }

@@ -17,6 +17,8 @@ function icon(string $name, int $size = 20): string
 {
     $paths = [
         'horse'=>'<path d="M7 21h13M8 21l1-4 4-5-3 1-3 3-4-2 2-5 4-3V3l4 2c3 0 5 2 6 5l1 11"/><path d="M8.5 9.5h.01M15 9c1 1 2 3 2 5"/>',
+        'ticket'=>'<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M12 9h.01m0 3h.01m0 3h.01"/>',
+        'card'=>'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18m-14 5h4"/>',
         'calendar'=>'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
         'pin'=>'<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
         'clock'=>'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -90,7 +92,7 @@ function organizerFilterForm(array $organizers, int $selected, bool $admin): voi
 function metricStrip(array $metrics, string $label): void
 {
     ?>
-    <dl class="panel metrics" aria-label="<?= e($label) ?>">
+    <dl class="panel metrics<?= count($metrics) === 2 ? ' metrics-pair' : '' ?>" aria-label="<?= e($label) ?>">
         <?php foreach ($metrics as [$glyph, $name, $value]): ?>
             <div class="metric">
                 <span class="metric-icon"><?= icon($glyph, 20) ?></span>

@@ -12,5 +12,12 @@ return [
         'password' => '',
         // 'socket' => '/var/run/mysqld/mysqld.sock',
     ],
+    'stripe' => [
+        'public_url' => 'https://hjaelpere.rideklub.dk',
+        'secret_key' => '',
+        'webhook_secret' => '',
+        'event_price' => '',
+        'annual_price' => '',
+    ],
     // 'sqlite' => ['path' => __DIR__ . '/var/staevnevagt.sqlite'],
 ];

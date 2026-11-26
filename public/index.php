@@ -6,9 +6,18 @@ require dirname(__DIR__) . '/app/actions.php';
 require dirname(__DIR__) . '/app/organizers.php';
 require dirname(__DIR__) . '/app/ui.php';
 
+require dirname(__DIR__) . '/app/stripe.php';
+require dirname(__DIR__) . '/app/billing.php';
+require dirname(__DIR__) . '/app/helper-applications.php';
+
+if (($_GET['page'] ?? '') === 'stripe-webhook') {
+    handleStripeWebhook();
+}
+
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
-header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'; base-uri 'self'");
+$paymentDestination = ($_GET['page'] ?? '') === 'billing' ? ' https://checkout.stripe.com' : '';
+header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'$paymentDestination; base-uri 'self'");
 header('Cache-Control: private, no-store');
 session_start([
     'use_strict_mode' => 1,
@@ -33,7 +42,7 @@ if ($demo) {
 
 $queryId = (int) ($_GET['event'] ?? 0);
 $page = $_GET['page'] ?? 'events';
-$page = in_array($page, ['events','admin','delete','export','platform','login','register','organizer','mine','notices','image'], true) ? $page : 'events';
+$page = in_array($page, ['events','admin','delete','export','platform','login','register','organizer','billing','mine','notices','image'], true) ? $page : 'events';
 
 if ($page === 'image') {
     $userId = $user['id'] ?? 0;
@@ -72,7 +81,7 @@ if ($page === 'delete') {
         $confirmationEvent = null;
     }
 }
-if (($page === 'admin' && !$canManage) || ($page === 'platform' && !$isAdmin)) {
+if (($page === 'admin' && !$canManage) || ($page === 'platform' && !$isAdmin) || ($page === 'billing' && (!$canManage || empty($user['organizer_id'])))) {
     http_response_code(403);
     $page = 'forbidden';
 }
@@ -141,6 +150,7 @@ $unread = $user ? (int) query('SELECT COUNT(*) FROM notices WHERE user_id=? AND 
 $title = match ($page) {
     'admin' => 'Stævneadmin',
     'platform' => 'Platformadmin',
+    'billing' => 'Betaling',
     'delete' => 'Bekræft sletning',
     'organizer' => 'Opret arrangør',
     'login' => 'Log ind',
@@ -182,6 +192,7 @@ $title = match ($page) {
             <p class="nav-heading">Arrangør</p>
             <?php if ($canCreateOrganizer): ?><a href="?page=organizer" <?= $page === 'organizer' ? 'aria-current="page"' : '' ?>><?= icon('flag', 19) ?> Opret arrangør</a><?php endif; ?>
             <?php if ($canManage): ?><a href="?page=admin" <?= in_array($page, ['admin','delete'], true) ? 'aria-current="page"' : '' ?>><?= icon('clipboard', 19) ?> Stævneadmin</a><?php endif; ?>
+            <?php if ($canManage && !empty($user['organizer_id'])): ?><a href="?page=billing" <?= $page === 'billing' ? 'aria-current="page"' : '' ?>><?= icon('card', 19) ?> Betaling</a><?php endif; ?>
             <?php if ($isAdmin): ?><a href="?page=platform" <?= $page === 'platform' ? 'aria-current="page"' : '' ?>><?= icon('users', 19) ?> Platformadmin</a><?php endif; ?>
         </div>
         <?php endif; ?>
@@ -219,6 +230,8 @@ if ($page === 'events') {
     require dirname(__DIR__) . '/app/events-view.php';
 } elseif ($page === 'admin') {
     require dirname(__DIR__) . '/app/admin-view.php';
+} elseif ($page === 'billing') {
+    require dirname(__DIR__) . '/app/billing-view.php';
 } elseif ($page === 'delete') {
     require dirname(__DIR__) . '/app/admin-delete-view.php';
 } elseif ($page === 'platform') {
