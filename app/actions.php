@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 final class InputError extends RuntimeException {}
+final class AccessDenied extends RuntimeException {}
 
 function input(string $key): string
 {
@@ -68,7 +69,15 @@ function handlePost(?array $user, int $eventId, string $page): never
             go($eventLink);
         }
 
-        if (($action === 'login' || $action === 'register') && !$user) {
+        if ($action === 'organizer' && $user) {
+            if (isPlatformAdmin($user)) {
+                throw new AccessDenied();
+            }
+            createOrganizer($user['id'], field('organizer_name', 'Arrangørens navn', 160));
+            go($adminLink, 'Arrangøren er oprettet. Du kan nu oprette stævner.');
+        }
+
+        if (in_array($action, ['login','register','organizer'], true) && !$user) {
             $email = strtolower(field('email', 'E-mail', 254));
             $password = input('password');
             if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) > 72 || str_contains($password, "\0")) {
@@ -76,7 +85,7 @@ function handlePost(?array $user, int $eventId, string $page): never
             }
             $account = row('SELECT * FROM users WHERE email = ?', [$email]);
 
-            if ($action === 'register') {
+            if ($action !== 'login') {
                 $name = field('name', 'Navn', 120);
                 if (strlen($password) < 8) {
                     throw new InputError('Vælg en adgangskode med mindst 8 tegn.');
@@ -84,12 +93,20 @@ function handlePost(?array $user, int $eventId, string $page): never
                 if ($account) {
                     throw new InputError('E-mailadressen er allerede i brug. Prøv at logge ind.');
                 }
-                query('INSERT INTO users (name,email,password) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING',
-                    [$name, $email, password_hash($password, PASSWORD_DEFAULT)]);
-                if ((int) query('SELECT changes()')->fetchColumn() !== 1) {
-                    throw new InputError('E-mailadressen er allerede i brug. Prøv at logge ind.');
-                }
-                $account = ['id'=>(int) db()->lastInsertId(), 'role'=>'helper'];
+                $organizerName = $action === 'organizer' ? field('organizer_name', 'Arrangørens navn', 160) : null;
+                $hash = password_hash($password, PASSWORD_DEFAULT);
+                $id = atomic(function () use ($name, $email, $hash, $organizerName): int {
+                    $created = query('INSERT INTO users (name,email,password) VALUES (?,?,?) ON CONFLICT(email) DO NOTHING',
+                        [$name,$email,$hash])->rowCount();
+                    if (!$created) {
+                        throw new InputError('E-mailadressen er allerede i brug. Prøv at logge ind.');
+                    }
+                    $id = (int) db()->lastInsertId();
+                    if ($organizerName !== null) {
+                        createOrganizer($id, $organizerName);
+                    }
+                    return $id;
+                });
             } else {
                 $key = hash('sha256', $email . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
                 $window = intdiv(time(), 600);
@@ -105,11 +122,17 @@ function handlePost(?array $user, int $eventId, string $page): never
                     throw new InputError('E-mail eller adgangskode er forkert.');
                 }
                 query('DELETE FROM login_attempts WHERE key=? OR window < ?', [$key, $window-24]);
+                $id = $account['id'];
             }
 
             session_regenerate_id(true);
-            $_SESSION = ['user' => $account['id']];
-            go($account['role'] === 'admin' ? $adminLink : $eventLink, $action === 'register' ? 'Din profil er oprettet.' : 'Du er logget ind.');
+            $_SESSION = ['user' => $id];
+            $signedIn = account($id);
+            $landing = isPlatformAdmin($signedIn) ? '?page=platform' : (canManageEvents($signedIn) && !$eventId ? $adminLink : $eventLink);
+            if ($action === 'organizer') {
+                go($adminLink, 'Arrangøren er oprettet. Du kan nu oprette stævner.');
+            }
+            go($landing, $action === 'register' ? 'Din profil er oprettet.' : 'Du er logget ind.');
         }
 
         if (!$user) {
@@ -118,8 +141,10 @@ function handlePost(?array $user, int $eventId, string $page): never
 
         if ($action === 'join' && $user['role'] === 'helper') {
             atomic(function () use ($eventId, $user): void {
-                $shift = requireRow('SELECT v.*, e.name event_name FROM shifts v JOIN groups g ON g.id=v.group_id
-                    JOIN events e ON e.id=g.event_id WHERE v.id=? AND e.id=? AND v.visible=1 AND v.bookable=1 AND g.visible=1 AND e.visible=1',
+                $shift = requireRow('SELECT v.*,e.name AS event_name,o.owner_id,o.name AS organizer_name
+                    FROM shifts v JOIN groups g ON g.id=v.group_id JOIN events e ON e.id=g.event_id
+                    JOIN organizers o ON o.id=e.organizer_id
+                    WHERE v.id=? AND e.id=? AND v.visible=1 AND v.bookable=1 AND g.visible=1 AND e.visible=1 AND o.active=1',
                     [(int) input('id'), $eventId]);
                 if ($shift['starts_at'] <= time()) {
                     throw new InputError('Vagten er allerede begyndt.');
@@ -131,8 +156,11 @@ function handlePost(?array $user, int $eventId, string $page): never
                     throw new InputError('Alle pladser er taget.');
                 }
                 query('INSERT INTO signups (user_id, shift_id, created_at) VALUES (?,?,?)', [$user['id'], $shift['id'], time()]);
-                foreach (query("SELECT id FROM users WHERE role='admin'")->fetchAll() as $admin) {
-                    notify($admin['id'], 'Ny tilmelding', "{$user['name']} har tilmeldt sig {$shift['name']} ved {$shift['event_name']}.");
+                $recipients = $shift['owner_id'] === null
+                    ? query("SELECT id FROM users WHERE role='admin'")->fetchAll(PDO::FETCH_COLUMN)
+                    : [$shift['owner_id']];
+                foreach ($recipients as $recipient) {
+                    notify($recipient, 'Ny tilmelding', "{$user['name']} har tilmeldt sig {$shift['name']} ved {$shift['event_name']} ({$shift['organizer_name']}).");
                 }
             });
             go($eventLink, 'Du er tilmeldt vagten.');
@@ -143,19 +171,30 @@ function handlePost(?array $user, int $eventId, string $page): never
             go('?page=notices&event=' . $eventId);
         }
 
-        if ($user['role'] !== 'admin') {
-            http_response_code(403);
-            exit('Denne handling kræver administratoradgang.');
+        if ($action === 'save_organizer') {
+            if (!isPlatformAdmin($user)) {
+                throw new AccessDenied();
+            }
+            saveOrganizer();
+            go('?page=platform', 'Arrangøren er opdateret.');
+        }
+
+        if (!canManageEvents($user)) {
+            throw new AccessDenied();
         }
 
         require __DIR__ . '/admin-actions.php';
-        $savedEvent = atomic(fn() => saveAdmin($action, $eventId));
+        $savedEvent = atomic(fn() => saveAdmin($action, $eventId, $user));
         go('?page=admin&event=' . $savedEvent . ($action === 'contact' ? '#kontakter' : ''), 'Ændringen er gemt.');
+    } catch (AccessDenied) {
+        http_response_code(403);
+        exit('Du har ikke adgang til denne handling.');
     } catch (InputError $error) {
         $_SESSION['flash'] = ['error', $error->getMessage()];
         go(match ($page) {
-            'register', 'login' => '?page=' . $page . '&event=' . $eventId,
+            'register', 'login', 'organizer' => '?page=' . $page . '&event=' . $eventId,
             'admin' => $adminLink,
+            'platform' => '?page=platform',
             default => $eventLink,
         });
     }

@@ -1,23 +1,35 @@
-<?php if ($page === 'login' || $page === 'register'):
-    $register = $page === 'register';
+<?php if (in_array($page, ['login','register','organizer'], true)):
+    $organizerSignup = $page === 'organizer';
+    $register = $page !== 'login';
+    $heading = $organizerSignup ? 'Opret arrangør' : ($register ? 'Opret bruger' : 'Log ind');
 ?>
 <section class="panel auth-card">
-    <span class="tile"><?= icon('user', 22) ?></span>
-    <h1><?= $register ? 'Opret bruger' : 'Log ind' ?></h1>
-    <p><?= $register ? 'Opret din profil, så du kan melde dig som hjælper.' : 'Log ind for at tilmelde dig og se dine vagter.' ?></p>
+    <span class="tile"><?= icon($organizerSignup ? 'users' : 'user', 22) ?></span>
+    <h1><?= $heading ?></h1>
+    <p><?php if ($organizerSignup): ?>Opret din rideklub eller arrangør, så du kan planlægge stævner og tage imod tilmeldinger.
+        <?php elseif ($register): ?>Opret din profil, så du kan melde dig som hjælper.
+        <?php else: ?>Log ind for at se dine vagter eller administrere dine stævner.<?php endif; ?></p>
     <form method="post" class="form-stack">
         <?php csrf($page); ?>
-        <?php if ($register): ?><label>Dit navn<input name="name" autocomplete="name" maxlength="120" required></label><?php endif; ?>
-        <label>E-mail<input type="email" name="email" autocomplete="email" maxlength="254" required></label>
-        <label>Adgangskode<input type="password" name="password" autocomplete="<?= $register ? 'new-password' : 'current-password' ?>" <?= $register ? 'minlength="8" aria-describedby="password-help"' : '' ?> maxlength="72" required></label>
-        <?php if ($register): ?><p class="form-hint" id="password-help">Brug mindst 8 tegn.</p><?php endif; ?>
-        <button class="button primary" type="submit"><?= $register ? 'Opret bruger' : 'Log ind' ?></button>
+        <?php if ($organizerSignup): ?><label>Klub- eller arrangørnavn<input name="organizer_name" autocomplete="organization" maxlength="160" required></label><?php endif; ?>
+        <?php if (!$user): ?>
+            <?php if ($register): ?><label>Dit navn<input name="name" autocomplete="name" maxlength="120" required></label><?php endif; ?>
+            <label>E-mail<input type="email" name="email" autocomplete="email" maxlength="254" required></label>
+            <label>Adgangskode<input type="password" name="password" autocomplete="<?= $register ? 'new-password' : 'current-password' ?>" <?= $register ? 'minlength="8" aria-describedby="password-help"' : '' ?> maxlength="72" required></label>
+            <?php if ($register): ?><p class="form-hint" id="password-help">Brug mindst 8 tegn.</p><?php endif; ?>
+        <?php endif; ?>
+        <button class="button primary" type="submit"><?= $heading ?></button>
     </form>
-    <div class="auth-switch"><?= $register ? 'Har du allerede en profil?' : 'Har du ingen profil endnu?' ?> <a class="text-link" href="?page=<?= $register ? 'login' : 'register' ?>&amp;event=<?= $eventId ?>"><?= $register ? 'Log ind' : 'Opret bruger' ?></a></div>
+    <?php if (!$user): ?>
+    <div class="auth-switch">
+        <?php if ($register): ?>Har du allerede en profil? <a class="text-link" href="?page=login<?= $queryId ? '&amp;event=' . $queryId : '' ?>">Log ind</a>
+        <?php else: ?>Har du ingen profil endnu? <a class="text-link" href="?page=register<?= $queryId ? '&amp;event=' . $queryId : '' ?>">Opret hjælperprofil</a><?php endif; ?>
+    </div>
+    <?php endif; ?>
 </section>
 <?php elseif ($page === 'mine'):
-    $shifts = query('SELECT v.*,g.name AS group_name,g.id AS group_id,e.name AS event_name FROM signups s JOIN shifts v ON v.id=s.shift_id
-        JOIN groups g ON g.id=v.group_id JOIN events e ON e.id=g.event_id WHERE s.user_id=? ORDER BY v.starts_at DESC,v.id DESC', [$user['id']])->fetchAll();
+    $shifts = query('SELECT v.*,g.name AS group_name,g.id AS group_id,e.name AS event_name,o.name AS organizer_name FROM signups s JOIN shifts v ON v.id=s.shift_id
+        JOIN groups g ON g.id=v.group_id JOIN events e ON e.id=g.event_id JOIN organizers o ON o.id=e.organizer_id WHERE s.user_id=? ORDER BY v.starts_at DESC,v.id DESC', [$user['id']])->fetchAll();
 ?>
 <section class="interior">
     <h1>Mine vagter</h1><p>Kontakt stævnets arrangør, hvis du skal afmeldes en vagt.</p>
@@ -31,7 +43,7 @@
     <div class="panel list-panel">
         <?php foreach ($entries as $shift): ?><div class="listing">
             <span class="tile"><?= icon('calendar') ?></span><div><h3><?= e($shift['name']) ?></h3>
-            <p><?= e($shift['event_name']) ?> · <?= e($shift['group_name']) ?></p><p><?= e(shiftDate($shift)) ?></p></div>
+            <p><?= e($shift['event_name']) ?> · <?= e($shift['organizer_name']) ?> · <?= e($shift['group_name']) ?></p><p><?= e(shiftDate($shift)) ?></p></div>
         </div><?php endforeach; ?>
     </div>
     <?php endforeach; ?>
@@ -51,5 +63,10 @@
     <?php endif; ?>
 </section>
 <?php else: ?>
-<section class="interior"><h1>Administratoradgang</h1><p>Log ind med en administratorkonto for at administrere stævner.</p><a class="button primary" href="?page=login">Log ind</a></section>
+<section class="interior">
+    <h1>Administratoradgang</h1>
+    <?php if (!$user): ?><p>Log ind for at administrere stævner.</p><a class="button primary" href="?page=login">Log ind</a>
+    <?php elseif ($user['organizer_id'] && !$user['organizer_active']): ?><p>Din arrangøradgang er sat på pause.</p>
+    <?php else: ?><p>Du har ikke adgang til den valgte side.</p><?php endif; ?>
+</section>
 <?php endif; ?>

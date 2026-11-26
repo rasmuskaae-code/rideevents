@@ -24,4 +24,4 @@ if (!$created) {
     fwrite(STDERR, "Der findes allerede en konto med den e-mailadresse.\n");
     exit(1);
 }
-fwrite(STDOUT, "Administratorkontoen er oprettet.\n");
+fwrite(STDOUT, "Platformadministratorens konto er oprettet.\n");

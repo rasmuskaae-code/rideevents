@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 require dirname(__DIR__) . '/app/actions.php';
+require dirname(__DIR__) . '/app/organizers.php';
 require dirname(__DIR__) . '/app/ui.php';
 
 header('X-Content-Type-Options: nosniff');
@@ -16,8 +17,10 @@ session_start([
     'cookie_samesite' => 'Lax',
 ]);
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
-$user = isset($_SESSION['user']) ? row('SELECT id,name,email,role FROM users WHERE id=?', [$_SESSION['user']]) : null;
-$isAdmin = ($user['role'] ?? '') === 'admin';
+$user = isset($_SESSION['user']) ? account($_SESSION['user']) : null;
+$isAdmin = isPlatformAdmin($user);
+$canManage = canManageEvents($user);
+$canCreateOrganizer = !$isAdmin && empty($user['organizer_id']);
 $demo = getenv('STAEVNE_DEMO') === '1';
 if ($demo) {
     require dirname(__DIR__) . '/app/demo.php';
@@ -26,13 +29,16 @@ if ($demo) {
 
 $queryId = (int) ($_GET['event'] ?? 0);
 $page = $_GET['page'] ?? 'events';
-$page = in_array($page, ['events','admin','login','register','mine','notices','image'], true) ? $page : 'events';
+$page = in_array($page, ['events','admin','platform','login','register','organizer','mine','notices','image'], true) ? $page : 'events';
 
 if ($page === 'image') {
-    $image = row('SELECT i.* FROM images i JOIN groups g ON g.id=i.group_id JOIN events e ON e.id=g.event_id
-        WHERE i.id=? AND (?=1 OR (g.visible=1 AND e.visible=1) OR EXISTS
-        (SELECT 1 FROM signups s JOIN shifts v ON v.id=s.shift_id WHERE s.user_id=? AND v.group_id=g.id))',
-        [(int) ($_GET['id'] ?? 0), (int) $isAdmin, (int) ($user['id'] ?? 0)]);
+    $userId = $user['id'] ?? 0;
+    $image = row("SELECT i.* FROM images i JOIN groups g ON g.id=i.group_id JOIN events e ON e.id=g.event_id
+        JOIN organizers o ON o.id=e.organizer_id
+        WHERE i.id=? AND ((o.active=1 AND (o.owner_id=? OR (g.visible=1 AND e.visible=1)))
+        OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='admin')
+        OR EXISTS (SELECT 1 FROM signups s JOIN shifts v ON v.id=s.shift_id WHERE s.user_id=? AND v.group_id=g.id))",
+        [(int) ($_GET['id'] ?? 0), $userId, $userId, $userId]);
     if (!$image) {
         http_response_code(404);
         exit;
@@ -45,12 +51,19 @@ if ($page === 'image') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     handlePost($user, $queryId, $page);
 }
-if ($page === 'admin' && !$isAdmin) {
+if (($page === 'admin' && !$canManage) || ($page === 'platform' && !$isAdmin)) {
     http_response_code(403);
     $page = 'forbidden';
 }
 if ($user && in_array($page, ['login','register'], true)) {
     go('?event=' . $queryId);
+}
+if ($page === 'organizer' && !$canCreateOrganizer) {
+    if ($canManage) {
+        go($isAdmin ? '?page=platform' : '?page=admin');
+    }
+    http_response_code(403);
+    $page = 'forbidden';
 }
 if (in_array($page, ['mine','notices'], true) && !$user) {
     go('?page=login&event=' . $queryId);
@@ -60,16 +73,54 @@ if ($user) {
 }
 $flash = $_SESSION['flash'] ?? null;
 unset($_SESSION['flash']);
-$events = query('SELECT * FROM events' . ($page === 'admin' ? '' : ' WHERE visible=1') . ' ORDER BY starts_on,id')->fetchAll();
+$eventSql = 'SELECT e.*,o.name AS organizer_name,o.active AS organizer_active
+    FROM events e JOIN organizers o ON o.id=e.organizer_id';
+$args = [];
+$allowOrganizerFilter = $page === 'events' || ($page === 'admin' && $isAdmin);
+$organizerOptions = match (true) {
+    $page === 'admin' && $isAdmin => query('SELECT id,name,active,owner_id FROM organizers ORDER BY name COLLATE NOCASE,id')->fetchAll(),
+    $page === 'events' => query('SELECT DISTINCT o.id,o.name,o.active FROM organizers o JOIN events e ON e.organizer_id=o.id
+        WHERE o.active=1 AND e.visible=1 ORDER BY o.name COLLATE NOCASE,o.id')->fetchAll(),
+    default => [],
+};
+$organizerFilter = (int) ($_GET['organizer'] ?? 0);
+if (!$allowOrganizerFilter || !in_array($organizerFilter, array_column($organizerOptions, 'id'), true)) {
+    $organizerFilter = 0;
+}
+
+if ($page === 'admin') {
+    if (!$isAdmin) {
+        $eventSql .= ' WHERE o.owner_id=? AND o.active=1';
+        $args[] = $user['id'];
+    }
+} else {
+    $eventSql .= ' WHERE e.visible=1 AND o.active=1';
+}
+$events = query($eventSql . ' ORDER BY e.starts_on,e.id', $args)->fetchAll();
 $eventsById = array_column($events, null, 'id');
 $today = date('Y-m-d');
-$upcoming = array_filter($events, fn(array $candidate): bool => $candidate['ends_on'] >= $today);
-$event = $eventsById[$queryId] ?? (($page === 'admin' && isset($_GET['event']) && $queryId === 0) ? null : (reset($upcoming) ?: reset($events) ?: null));
+$event = $eventsById[$queryId] ?? null;
+if ($page === 'admin' && $queryId > 0 && !$event) {
+    http_response_code(404);
+    $page = 'forbidden';
+}
+if ($organizerFilter) {
+    $events = array_values(array_filter($events, fn(array $candidate): bool => $candidate['organizer_id'] === $organizerFilter));
+    if ($event && $event['organizer_id'] !== $organizerFilter) {
+        $event = null;
+    }
+}
+if (!$event && $page !== 'forbidden' && !($page === 'admin' && isset($_GET['event']) && $queryId === 0)) {
+    $upcoming = array_filter($events, fn(array $candidate): bool => $candidate['ends_on'] >= $today);
+    $event = reset($upcoming) ?: reset($events) ?: null;
+}
 $eventId = $event['id'] ?? 0;
 $eventLink = '?event=' . $eventId;
 $unread = $user ? (int) query('SELECT COUNT(*) FROM notices WHERE user_id=? AND read_at IS NULL', [$user['id']])->fetchColumn() : 0;
 $title = match ($page) {
-    'admin' => 'Administration',
+    'admin' => 'Stævneadmin',
+    'platform' => 'Platformadmin',
+    'organizer' => 'Opret arrangør',
     'login' => 'Log ind',
     'register' => 'Opret bruger',
     'mine' => 'Mine vagter',
@@ -94,15 +145,17 @@ $title = match ($page) {
         <a class="brand" href="<?= e($eventLink) ?>"><span class="brand-mark"><?= icon('horse', 25) ?></span><span>Stævnevagt</span></a>
         <nav aria-label="Hovedmenu" class="header-nav">
             <a href="<?= e($eventLink) ?>" <?= $page === 'events' ? 'aria-current="page"' : '' ?>>Stævner</a>
-            <a href="?page=mine&amp;event=<?= $eventId ?>" <?= $page === 'mine' ? 'aria-current="page"' : '' ?>>Mine vagter</a>
-            <?php if ($isAdmin): ?><a href="?page=admin&amp;event=<?= $eventId ?>" <?= $page === 'admin' ? 'aria-current="page"' : '' ?>>Administration</a><?php endif; ?>
+            <?php if (!$isAdmin): ?><a href="?page=mine&amp;event=<?= $eventId ?>" <?= $page === 'mine' ? 'aria-current="page"' : '' ?>>Mine vagter</a><?php endif; ?>
+            <?php if ($canManage): ?><a href="?page=admin" <?= $page === 'admin' ? 'aria-current="page"' : '' ?>>Stævneadmin</a><?php endif; ?>
+            <?php if ($isAdmin): ?><a href="?page=platform" <?= $page === 'platform' ? 'aria-current="page"' : '' ?>>Platformadmin</a><?php endif; ?>
+            <?php if ($canCreateOrganizer): ?><a href="?page=organizer" <?= $page === 'organizer' ? 'aria-current="page"' : '' ?>>Opret arrangør</a><?php endif; ?>
         </nav>
         <div class="account">
             <?php if ($user): ?>
                 <a class="bell-button" href="?page=notices&amp;event=<?= $eventId ?>" aria-label="Notifikationer<?= $unread ? ', ' . $unread . ' ulæste' : '' ?>"><?= icon('bell') ?><?php if ($unread): ?><span class="unread-dot"></span><?php endif; ?></a>
                 <form method="post" action="<?= e($eventLink) ?>"><?php csrf('logout'); ?><button class="button secondary small" type="submit">Log ud</button></form>
             <?php else: ?>
-                <a class="button secondary small" href="?page=login&amp;event=<?= $eventId ?>"><?= icon('user', 17) ?> Log ind</a>
+                <a class="button secondary small" href="?page=login"><?= icon('user', 17) ?> Log ind</a>
             <?php endif; ?>
         </div>
     </div>
@@ -114,6 +167,8 @@ if ($page === 'events') {
     require dirname(__DIR__) . '/app/events-view.php';
 } elseif ($page === 'admin') {
     require dirname(__DIR__) . '/app/admin-view.php';
+} elseif ($page === 'platform') {
+    require dirname(__DIR__) . '/app/platform-view.php';
 } else {
     require dirname(__DIR__) . '/app/account-view.php';
 }

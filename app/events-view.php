@@ -7,7 +7,7 @@
 </section>
 
 <?php if (!$event): ?>
-    <section class="panel empty-panel"><span class="tile"><?= icon('calendar') ?></span><h2>Ingen stævner at vise</h2><p>Her kan du se stævnerne, når arrangøren har åbnet for hjælpere.</p><?php if ($isAdmin): ?><a class="button primary" href="?page=admin&amp;event=0">Opret stævne</a><?php endif; ?></section>
+    <section class="panel empty-panel"><span class="tile"><?= icon('calendar') ?></span><h2>Ingen stævner at vise</h2><p>Her kan du se stævnerne, når arrangøren har åbnet for hjælpere.</p><?php if ($canManage): ?><a class="button primary" href="?page=admin&amp;event=0">Opret stævne</a><?php endif; ?></section>
 <?php else:
     $groups = query('SELECT * FROM groups WHERE event_id=? AND visible=1 ORDER BY id', [$eventId])->fetchAll();
     $shifts = query('SELECT v.*, COUNT(s.id) AS booked, COUNT(CASE WHEN s.user_id=? THEN 1 END) AS mine
@@ -25,12 +25,16 @@
 ?>
 <div class="event-toolbar">
     <div><h2>Vagter til stævnet</h2><p>Åbn en gruppe for at se opgaver og ledige pladser.</p></div>
+    <div class="event-controls">
+    <?php if (count($organizerOptions) > 1): ?><?php organizerFilterForm($organizerOptions, $organizerFilter, false); ?><?php endif; ?>
     <form method="get" class="event-picker">
+        <?php if ($organizerFilter): ?><input type="hidden" name="organizer" value="<?= $organizerFilter ?>"><?php endif; ?>
         <label for="event">Vælg stævne</label>
         <div class="select-wrap with-icon"><?= icon('calendar', 17) ?><select id="event" name="event" data-auto-submit>
-            <?php foreach ($events as $option): ?><option value="<?= $option['id'] ?>" <?= $eventId === $option['id'] ? 'selected' : '' ?>><?= e($option['name']) ?><?= $option['ends_on'] < $today ? ' (afholdt)' : '' ?></option><?php endforeach; ?>
+            <?php foreach ($events as $option): ?><option value="<?= $option['id'] ?>" <?= $eventId === $option['id'] ? 'selected' : '' ?>><?= e($option['name']) ?><?= !$organizerFilter && count($organizerOptions) > 1 ? ' · ' . e($option['organizer_name']) : '' ?><?= $option['ends_on'] < $today ? ' (afholdt)' : '' ?></option><?php endforeach; ?>
         </select><?= icon('chevron', 16) ?></div><noscript><button class="button secondary small">Vis stævne</button></noscript>
     </form>
+    </div>
 </div>
 <div class="columns">
     <section class="groups" aria-label="Vagtgrupper">
@@ -67,7 +71,7 @@
         <section class="panel event-card">
             <div class="card-kicker"><span class="tile"><?= icon('calendar', 19) ?></span><span class="discipline"><?= e(disciplines()[$event['discipline']]) ?></span></div>
             <h2><?= e($event['name']) ?></h2>
-            <div class="event-meta"><span><?= icon('calendar', 17) ?> <?= e(eventDates($event)) ?></span><span><?= icon('pin', 18) ?> <?= e($event['location']) ?></span></div>
+            <div class="event-meta"><span><?= icon('users', 17) ?> <?= e($event['organizer_name']) ?></span><span><?= icon('calendar', 17) ?> <?= e(eventDates($event)) ?></span><span><?= icon('pin', 18) ?> <?= e($event['location']) ?></span></div>
             <?php if ($event['description'] !== ''): ?><p><?= nl2br(e($event['description'])) ?></p><?php endif; ?>
         </section>
         <section class="info-card">

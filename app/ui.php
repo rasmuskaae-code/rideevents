@@ -56,3 +56,20 @@ function shiftDate(array $shift): string
     $endDay = $start->format('Y-m-d') === $end->format('Y-m-d') ? '' : dayLabel($end->format('Y-m-d')) . ' ';
     return $date . ', kl. ' . $start->format('H:i') . '–' . $endDay . $end->format('H:i');
 }
+
+function organizerFilterForm(array $organizers, int $selected, bool $admin): void
+{
+    ?>
+    <form method="get" class="event-picker">
+        <?php if ($admin): ?><input type="hidden" name="page" value="admin"><?php endif; ?>
+        <label for="organizer-filter">Arrangør</label>
+        <div class="select-wrap"><select name="organizer" id="organizer-filter" data-auto-submit>
+            <option value="0">Alle arrangører</option>
+            <?php foreach ($organizers as $option): ?>
+                <option value="<?= $option['id'] ?>" <?= $selected === $option['id'] ? 'selected' : '' ?>><?= e($option['name']) ?><?= $option['active'] ? '' : ' (sat på pause)' ?></option>
+            <?php endforeach; ?>
+        </select><?= icon('chevron', 16) ?></div>
+        <noscript><button class="button secondary small">Filtrér stævner</button></noscript>
+    </form>
+    <?php
+}

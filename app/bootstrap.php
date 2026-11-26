@@ -19,11 +19,15 @@ function db(): PDO
 
     $pdo = new PDO('sqlite:' . $path, options: [PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
     $pdo->exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
-    if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() === 0) {
-        atomic(function () use ($pdo): void {
-            if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() === 0) {
-                $pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
-                $pdo->exec('PRAGMA user_version = 1');
+    $migrations = [1 => __DIR__ . '/schema.sql', 2 => __DIR__ . '/migrations/002-organizers.sql'];
+    if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < count($migrations)) {
+        atomic(function () use ($pdo, $migrations): void {
+            $version = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
+            foreach ($migrations as $target => $file) {
+                if ($version < $target) {
+                    $pdo->exec(file_get_contents($file));
+                    $pdo->exec('PRAGMA user_version = ' . $target);
+                }
             }
         });
     }

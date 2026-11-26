@@ -212,3 +212,15 @@ details[open]>summary>.chevron,details[open]>summary>svg:last-child{transform:ro
     .group-count{white-space:normal;text-align:right}
     .hero{background-position:63% center}
 }
+
+.event-controls{display:flex;gap:10px;min-width:0}
+.event-controls .event-picker{width:min(244px,100%)}
+.platform-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:15px;align-items:start}
+.platform-grid h2{overflow-wrap:anywhere}
+@media(max-width:850px){
+    .event-toolbar:has(.event-controls form:nth-child(2)){align-items:start;flex-direction:column;gap:12px}
+}
+@media(max-width:680px){
+    .event-controls{width:100%;flex-wrap:wrap}
+    .event-controls .event-picker{flex:1 1 138px;width:auto}
+}
