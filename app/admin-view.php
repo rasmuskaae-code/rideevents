@@ -1,7 +1,7 @@
 <?php
 $adminLink = '?page=admin&event=' . $eventId;
 $eventForm = $event ?? ['name'=>'','discipline'=>'spring','location'=>'','starts_on'=>'','ends_on'=>'','description'=>'','visible'=>0];
-$groupList = $event ? query('SELECT * FROM groups WHERE event_id=? ORDER BY id', [$eventId])->fetchAll() : [];
+$groupList = $event ? query('SELECT * FROM `groups` WHERE event_id=? ORDER BY id', [$eventId])->fetchAll() : [];
 $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
 ?>
 <section class="interior admin-page">
@@ -95,7 +95,7 @@ $selectedOrganizer = $event['organizer_id'] ?? ($organizerFilter ?: null);
             <?php endif; ?>
         </div>
         <?php if ($event):
-            $contacts = query('SELECT * FROM contacts WHERE event_id=? ORDER BY name COLLATE NOCASE,id', [$eventId])->fetchAll();
+            $contacts = query('SELECT * FROM contacts WHERE event_id=? ORDER BY LOWER(name),id', [$eventId])->fetchAll();
         ?>
         <aside class="panel admin-section" id="kontakter">
             <span class="tile"><?= icon('users') ?></span><h2>Eksterne hjælpere</h2>

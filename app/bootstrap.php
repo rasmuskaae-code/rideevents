@@ -4,61 +4,7 @@ declare(strict_types=1);
 date_default_timezone_set('Europe/Copenhagen');
 umask(0077);
 
-function db(): PDO
-{
-    static $pdo;
-    if ($pdo instanceof PDO) {
-        return $pdo;
-    }
-
-    $path = getenv('STAEVNE_DB') ?: dirname(__DIR__) . '/var/staevnevagt.sqlite';
-    $directory = dirname($path);
-    if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
-        throw new RuntimeException('Kunne ikke oprette datamappen.');
-    }
-
-    $pdo = new PDO('sqlite:' . $path, options: [PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
-    $pdo->exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
-    $migrations = [1 => __DIR__ . '/schema.sql', 2 => __DIR__ . '/migrations/002-organizers.sql'];
-    if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() < count($migrations)) {
-        atomic(function () use ($pdo, $migrations): void {
-            $version = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
-            foreach ($migrations as $target => $file) {
-                if ($version < $target) {
-                    $pdo->exec(file_get_contents($file));
-                    $pdo->exec('PRAGMA user_version = ' . $target);
-                }
-            }
-        });
-    }
-    return $pdo;
-}
-
-function query(string $sql, array $args = []): PDOStatement
-{
-    $statement = db()->prepare($sql);
-    $statement->execute($args);
-    return $statement;
-}
-
-function row(string $sql, array $args = []): ?array
-{
-    return query($sql, $args)->fetch() ?: null;
-}
-
-function atomic(callable $work): mixed
-{
-    $pdo = db();
-    $pdo->exec('BEGIN IMMEDIATE');
-    try {
-        $result = $work();
-        $pdo->exec('COMMIT');
-        return $result;
-    } catch (Throwable $error) {
-        $pdo->exec('ROLLBACK');
-        throw $error;
-    }
-}
+require __DIR__ . '/database.php';
 
 function notify(int $user, string $title, string $body): void
 {
@@ -67,7 +13,7 @@ function notify(int $user, string $title, string $body): void
 
 function notifySignups(string $predicate, int $id, string $title, string $body): void
 {
-    $users = query("SELECT DISTINCT s.user_id FROM signups s JOIN shifts v ON v.id=s.shift_id JOIN groups g ON g.id=v.group_id WHERE $predicate = ?", [$id]);
+    $users = query("SELECT DISTINCT s.user_id FROM signups s JOIN shifts v ON v.id=s.shift_id JOIN `groups` g ON g.id=v.group_id WHERE $predicate = ?", [$id]);
     foreach ($users->fetchAll() as $user) {
         notify($user['user_id'], $title, $body);
     }
@@ -76,14 +22,20 @@ function notifySignups(string $predicate, int $id, string $title, string $body):
 function reminders(?int $user = null): void
 {
     $now = time();
-    $sql = "INSERT OR IGNORE INTO notices (user_id,title,body,created_at,reminder_key)
-        SELECT s.user_id, 'Din vagt starter snart', v.name || ' ved ' || e.name || ' starter om højst 30 minutter.', ?, s.id || ':' || v.starts_at
-        FROM signups s JOIN shifts v ON v.id=s.shift_id JOIN groups g ON g.id=v.group_id JOIN events e ON e.id=g.event_id
+    $body = sqlConcat('v.name', "' ved '", 'e.name', "' starter om højst 30 minutter.'");
+    $key = sqlConcat('s.id', "':'", 'v.starts_at');
+    $insert = usingMysql() ? 'INSERT INTO' : 'INSERT OR IGNORE INTO';
+    $sql = "$insert notices (user_id,title,body,created_at,reminder_key)
+        SELECT s.user_id, 'Din vagt starter snart', $body, ?, $key
+        FROM signups s JOIN shifts v ON v.id=s.shift_id JOIN `groups` g ON g.id=v.group_id JOIN events e ON e.id=g.event_id
         WHERE v.starts_at > ? AND v.starts_at <= ?";
     $args = [$now, $now, $now + 1800];
     if ($user !== null) {
         $sql .= ' AND s.user_id = ?';
         $args[] = $user;
+    }
+    if (usingMysql()) {
+        $sql .= ' ON DUPLICATE KEY UPDATE reminder_key=notices.reminder_key';
     }
     query($sql, $args);
 }

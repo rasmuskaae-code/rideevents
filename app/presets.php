@@ -20,7 +20,7 @@ function createPresetGroups(int $event, string $discipline, string $date): void
 {
     $day = new DateTimeImmutable($date);
     foreach (presetGroups($discipline) as $group => [$description, $shifts]) {
-        query('INSERT INTO groups (event_id,name,description,visible) VALUES (?,?,?,0)', [$event,$group,$description]);
+        query('INSERT INTO `groups` (event_id,name,description,visible) VALUES (?,?,?,0)', [$event,$group,$description]);
         $groupId = (int) db()->lastInsertId();
         foreach ($shifts as $shift) {
             query('INSERT INTO shifts (group_id,name,starts_at,ends_at,capacity,visible,bookable) VALUES (?,?,?,?,1,1,0)',

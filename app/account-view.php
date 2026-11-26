@@ -29,7 +29,7 @@
 </section>
 <?php elseif ($page === 'mine'):
     $shifts = query('SELECT v.*,g.name AS group_name,g.id AS group_id,e.name AS event_name,o.name AS organizer_name FROM signups s JOIN shifts v ON v.id=s.shift_id
-        JOIN groups g ON g.id=v.group_id JOIN events e ON e.id=g.event_id JOIN organizers o ON o.id=e.organizer_id WHERE s.user_id=? ORDER BY v.starts_at DESC,v.id DESC', [$user['id']])->fetchAll();
+        JOIN `groups` g ON g.id=v.group_id JOIN events e ON e.id=g.event_id JOIN organizers o ON o.id=e.organizer_id WHERE s.user_id=? ORDER BY v.starts_at DESC,v.id DESC', [$user['id']])->fetchAll();
 ?>
 <section class="interior">
     <h1>Mine vagter</h1><p>Kontakt stævnets arrangør, hvis du skal afmeldes en vagt.</p>

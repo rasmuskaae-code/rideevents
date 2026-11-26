@@ -8,9 +8,15 @@ Dansk hjælperportal til dressur- og springstævner.
 
 ## Installation på Plesk eller andet PHP-webhotel
 
-1. Hent repositoryet til en mappe på webhotellet. Sæt domænets **Document root** i Plesk til projektets `public/`-mappe. PHP skal kunne læse de øvrige projektmapper, og `var/` skal være skrivbar for PHP. Databasen oprettes automatisk i `var/staevnevagt.sqlite`. Sørg for, at PHP og planlagte opgaver kører som samme bruger.
-2. Vælg PHP 8.2 eller nyere med `pdo_sqlite` og SQLite 3.7.17 eller nyere. Brug HTTPS. Sæt `upload_max_filesize` til mindst `3M` og `post_max_size` til mindst `8M` i PHP-indstillingerne for at kunne uploade to billeder ad gangen.
-3. Opret din overordnede administratorkonto fra projektmappen via SSH. Erstat e-mail og navn, og brug webhotellets PHP-binær, hvis den hedder noget andet end `php`.
+1. Hent repositoryet, og sæt domænets **Document root** i Plesk til projektets `public/`-mappe. PHP og planlagte opgaver skal kunne læse projektfilerne, inklusive `config.php` uden for webroden.
+2. Vælg PHP 8.2 eller nyere med `pdo_mysql` til MySQL 8.0+ eller MariaDB 10.6+. Brug HTTPS. Sæt `upload_max_filesize` til mindst `3M` og `post_max_size` til mindst `8M`.
+3. Opret en tom database og en databasebruger i Plesk. Databasebrugeren skal have læse- og skriveadgang samt tilladelse til at oprette tabeller og indekser i den valgte database. Kopiér `config.example.php` til `config.php` i projektroden og udfyld `host`, `port`, `database`, `username` og `password` med oplysningerne fra Plesk. Brug `socket` i stedet for vært og port, hvis webhotellet angiver en Unix-socket. Stævnevagt opretter tabellerne automatisk. `config.php` er udeladt fra Git.
+
+   ```bash
+   cp config.example.php config.php
+   ```
+
+4. Ved en eksisterende SQLite-installation skal du først følge importvejledningen nedenfor. Ved en ny installation opretter du platformadministratoren via SSH fra projektmappen. Erstat e-mail og navn, og brug samme PHP-version som websitet.
 
    ```bash
    read -rsp 'Adgangskode til admin (mindst 8 tegn): ' staevne_adgangskode
@@ -19,12 +25,23 @@ Dansk hjælperportal til dressur- og springstævner.
    unset staevne_adgangskode
    ```
 
-4. Åbn domænet, og log ind med den konto, du netop oprettede. Du lander på **Platformadmin**. Opret et stævne via **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Standardgrupper og poster kan indsættes ud fra disciplinen. De starter skjult for hjælpere og lukket for tilmelding. Tilpas tider og antal pladser, og slå de relevante grupper og poster til.
-5. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den opretter påmindelser 30 minutter før vagtstart ud fra tiderne i Stævnevagt. Brug den samme database og PHP-version i webappen og i den planlagte opgave.
+5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den bruger samme `config.php` og opretter påmindelser ud fra de gemte vagttider.
 
-### Opdatering af en eksisterende installation
+### Flyt en eksisterende SQLite-installation til MySQL eller MariaDB
 
-Tag en backup af SQLite-databasen før opdateringen. Databasen opgraderes automatisk ved første brug. Eksisterende administratorkonti får platformadgang, og eksisterende stævner placeres under arrangøren **Stævnevagt**. Tilmeldinger og kontaktlister bevares. En platformadministrator kan vælge en ny arrangør på stævnet. Den nye arrangør får samtidig adgang til stævnets tilmeldinger og kontaktliste.
+1. Stop webadgang og det planlagte notifikationsjob midlertidigt, så der ikke kommer nye ændringer under flytningen. Tag en backup af SQLite-databasen.
+2. Opret en tom database i Plesk og udfyld `config.php` som ovenfor. Importen bruger både `pdo_mysql` og `pdo_sqlite` og kræver `ALTER`-adgang til den nye database for at bevare nummerserien for tilmeldinger.
+3. Kør importen fra projektmappen. Tilpas stien til backupfilen eller den oprindelige SQLite-fil.
+
+   ```bash
+   php bin/import-sqlite.php /absolut/sti/til/staevnevagt.sqlite
+   ```
+
+4. Kontrollér, at importen melder færdig, og åbn derefter websitet og notifikationsjobbet igen. Log ind med din eksisterende konto. Importen kopierer arrangører, konti, stævner, vagter, tilmeldinger, kontaktlister, billeder og notifikationer. Behold backupfilen til kontrol.
+
+### Brug SQLite
+
+Uden `config.php` bruger Stævnevagt fortsat SQLite. Du kan også sætte `driver` til `sqlite` i `config.php` og eventuelt angive `sqlite.path`. SQLite kræver `pdo_sqlite` og SQLite 3.7.17 eller nyere. Filen ligger som standard i `var/staevnevagt.sqlite`, og PHP skal have skriveadgang til mappen. Ved opdatering af en gammel installation får eksisterende administratorkonti platformadgang, og stævner uden en arrangør placeres under **Stævnevagt**. En platformadministrator kan vælge en ny arrangør på stævnet. Den nye arrangør får adgang til stævnets tilmeldinger og kontaktliste.
 
 ### Notifikationer og indstillinger
 
@@ -38,14 +55,15 @@ STAEVNE_MAIL_FROM=staevner@rideklub.dk STAEVNE_URL=https://hjaelpere.rideklub.dk
 
 | Miljøvariabel | Brug |
 | --- | --- |
-| `STAEVNE_DB` | Valgfri absolut sti til SQLite-databasen uden for webroden. Angiv samme sti for webappen og begge CLI-kommandoer. |
+| `STAEVNE_CONFIG` | Valgfri absolut sti til en anden konfigurationsfil. Brug samme konfiguration for webappen og CLI-kommandoerne. |
+| `STAEVNE_DB` | Valgfri absolut sti til SQLite-filen, når driveren er `sqlite`. |
 | `STAEVNE_MAIL_FROM` | Valgfri e-mailafsender til den planlagte opgave. |
 | `STAEVNE_URL` | Valgfri offentlig basisadresse til link i e-mails. |
 | `STAEVNE_SECURE_COOKIE` | Sæt til `1`, hvis HTTPS afsluttes foran PHP, og webserveren ikke videregiver HTTPS-status. |
 
 Påmindelser følger de tider, administratoren gemmer i systemet. Ved forsinkelser eller programændringer redigerer administratoren vagtens start og slut i Stævnevagt. Equipe-synkronisering kræver adgang til en aftalt kilde for klassernes starttider.
 
-Sikkerhedskopiér SQLite-databasen med webhotellets backup eller SQLite-funktionen `.backup`. Databasen indeholder også de uploadede gruppebilleder.
+Brug webhotellets databasebackup, eller brug SQLite-funktionen `.backup`, hvis du bruger SQLite. De uploadede gruppebilleder ligger i databasen.
 
 ## Lokal afprøvning
 
@@ -53,7 +71,7 @@ Sikkerhedskopiér SQLite-databasen med webhotellets backup eller SQLite-funktion
 STAEVNE_DEMO=1 STAEVNE_DB="$PWD/var/demo.sqlite" php -S localhost:8080 -t public
 ```
 
-Åbn [localhost:8080](http://localhost:8080). Demovisningen indsætter fiktive stævner i en tom database. Brug den samme `STAEVNE_DB` med `bin/admin.php`, hvis du også vil prøve administrationen lokalt.
+Kommandoen bruger SQLite på en installation uden `config.php`. Åbn [localhost:8080](http://localhost:8080). Demovisningen indsætter fiktive stævner i en tom database. Brug den samme `STAEVNE_DB` med `bin/admin.php`, hvis du også vil prøve administrationen lokalt.
 
 Kør `python3 tests/organizers.py` for at teste arrangøradgang, tilmeldinger på tværs og automatisk databaseopgradering. Testen bruger en separat, midlertidig database.
 
