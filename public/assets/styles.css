@@ -224,3 +224,10 @@ details[open]>summary>.chevron,details[open]>summary>svg:last-child{transform:ro
     .event-controls{width:100%;flex-wrap:wrap}
     .event-controls .event-picker{flex:1 1 138px;width:auto}
 }
+
+.admin-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.delete-card p+p{margin-top:10px}
+.delete-card .button{width:auto}
+@media(max-width:680px){
+    .admin-grid>.sidebar{display:grid}
+}

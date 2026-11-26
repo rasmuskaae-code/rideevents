@@ -17,6 +17,17 @@ function canManageEvents(?array $user): bool
     return isPlatformAdmin($user) || ($user['organizer_active'] ?? 0) === 1;
 }
 
+function managedEvent(int $id, array $user, bool $lock = false): ?array
+{
+    $fetch = $lock ? 'lockedRow' : 'row';
+    $event = $fetch('SELECT * FROM events WHERE id=?', [$id]);
+    if (!$event || isPlatformAdmin($user)) {
+        return $event;
+    }
+    $organizer = $fetch('SELECT id FROM organizers WHERE id=? AND owner_id=? AND active=1', [$event['organizer_id'],$user['id']]);
+    return $organizer ? $event : null;
+}
+
 function createOrganizer(int $owner, string $name): void
 {
     $created = insertUnique('INSERT INTO organizers (owner_id,name) VALUES (?,?)', [$owner,$name]);

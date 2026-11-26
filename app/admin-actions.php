@@ -6,13 +6,13 @@ function saveAdmin(string $action, int $eventId, array $user): int
     $id = (int) input('id');
     $isAdmin = isPlatformAdmin($user);
     $creatingEvent = $action === 'event' && $id === 0 && $eventId === 0;
-    $event = $creatingEvent ? null : lockedRow('SELECT * FROM events WHERE id=?', [$eventId]);
-    $ownOrganizer = $isAdmin ? null : lockedRow('SELECT id FROM organizers WHERE owner_id=? AND active=1', [$user['id']]);
-    if (!$isAdmin && !$ownOrganizer) {
+    $event = $creatingEvent ? null : managedEvent($eventId, $user, true);
+    if (!$creatingEvent && !$event) {
         throw new AccessDenied();
     }
-    if (!$creatingEvent && (!$event || (!$isAdmin && $event['organizer_id'] !== $ownOrganizer['id']))) {
-        throw new AccessDenied();
+    if ($action === 'delete') {
+        require_once __DIR__ . '/admin-delete.php';
+        return deleteAdminItem($event, input('kind'), $id);
     }
     if ($action === 'event') {
         if (!$creatingEvent && $id !== $eventId) {
@@ -24,7 +24,9 @@ function saveAdmin(string $action, int $eventId, array $user): int
                 ? ($event ? ['id'=>$event['organizer_id']] : requireRow('SELECT id FROM organizers WHERE owner_id IS NULL', []))
                 : requireRow('SELECT id FROM organizers WHERE id=?', [(int) input('organizer_id')]);
         } else {
-            $organizer = $ownOrganizer;
+            $organizer = $event
+                ? ['id'=>$event['organizer_id']]
+                : (lockedRow('SELECT id FROM organizers WHERE owner_id=? AND active=1', [$user['id']]) ?? throw new AccessDenied());
         }
         $starts = parseDate(input('starts_on'), 'Y-m-d')->format('Y-m-d');
         $ends = parseDate(input('ends_on'), 'Y-m-d')->format('Y-m-d');
