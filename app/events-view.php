@@ -9,15 +9,17 @@
 <?php if (!$event): ?>
     <section class="panel empty-panel"><span class="tile"><?= icon('calendar') ?></span><h2>Ingen stævner at vise</h2><p>Her kan du se stævnerne, når arrangøren har åbnet for hjælpere.</p><?php if ($canManage): ?><a class="button primary" href="?page=admin&amp;event=0">Opret stævne</a><?php endif; ?></section>
 <?php else:
-    $groups = query('SELECT * FROM groups WHERE event_id=? AND visible=1 ORDER BY id', [$eventId])->fetchAll();
-    $shifts = query('SELECT v.*, COUNT(s.id) AS booked, COUNT(CASE WHEN s.user_id=? THEN 1 END) AS mine
-        FROM shifts v JOIN groups g ON g.id=v.group_id LEFT JOIN signups s ON s.shift_id=v.id
-        WHERE g.event_id=? AND g.visible=1 AND v.visible=1 GROUP BY v.id ORDER BY v.starts_at,v.id', [$user['id'] ?? 0, $eventId])->fetchAll();
+    $groups = query('SELECT * FROM `groups` WHERE event_id=? AND visible=1 ORDER BY id', [$eventId])->fetchAll();
+    $shifts = query('SELECT v.*,
+        (SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id) AS booked,
+        (SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id AND s.user_id=?) AS mine
+        FROM shifts v JOIN `groups` g ON g.id=v.group_id
+        WHERE g.event_id=? AND g.visible=1 AND v.visible=1 ORDER BY v.starts_at,v.id', [$user['id'] ?? 0, $eventId])->fetchAll();
     $byGroup = [];
     foreach ($shifts as $shift) {
         $byGroup[$shift['group_id']][] = $shift;
     }
-    $images = query('SELECT i.id,i.group_id,i.position FROM images i JOIN groups g ON g.id=i.group_id WHERE g.event_id=? AND g.visible=1 ORDER BY i.position', [$eventId])->fetchAll();
+    $images = query('SELECT i.id,i.group_id,i.position FROM images i JOIN `groups` g ON g.id=i.group_id WHERE g.event_id=? AND g.visible=1 ORDER BY i.position', [$eventId])->fetchAll();
     $imagesByGroup = [];
     foreach ($images as $image) {
         $imagesByGroup[$image['group_id']][] = $image;

@@ -96,8 +96,7 @@ function handlePost(?array $user, int $eventId, string $page): never
                 $organizerName = $action === 'organizer' ? field('organizer_name', 'Arrangørens navn', 160) : null;
                 $hash = password_hash($password, PASSWORD_DEFAULT);
                 $id = atomic(function () use ($name, $email, $hash, $organizerName): int {
-                    $created = query('INSERT OR IGNORE INTO users (name,email,password) VALUES (?,?,?)',
-                        [$name,$email,$hash])->rowCount();
+                    $created = insertUnique('INSERT INTO users (name,email,password) VALUES (?,?,?)', [$name,$email,$hash]);
                     if (!$created) {
                         throw new InputError('E-mailadressen er allerede i brug. Prøv at logge ind.');
                     }
@@ -111,10 +110,13 @@ function handlePost(?array $user, int $eventId, string $page): never
                 $key = hash('sha256', $email . '|' . ($_SERVER['REMOTE_ADDR'] ?? ''));
                 $window = intdiv(time(), 600);
                 $attempts = atomic(function () use ($key, $window): int {
-                    query('INSERT OR IGNORE INTO login_attempts (key,window,count) VALUES (?,?,0)', [$key,$window]);
-                    query('UPDATE login_attempts SET count = CASE WHEN window = ? THEN count + 1 ELSE 1 END, window = ? WHERE key = ?',
+                    $insert = usingMysql()
+                        ? 'INSERT INTO login_attempts (`key`,`window`,`count`) VALUES (?,?,0) ON DUPLICATE KEY UPDATE `count`=`count`'
+                        : 'INSERT OR IGNORE INTO login_attempts (`key`,`window`,`count`) VALUES (?,?,0)';
+                    query($insert, [$key,$window]);
+                    query('UPDATE login_attempts SET `count` = CASE WHEN `window` = ? THEN `count` + 1 ELSE 1 END, `window` = ? WHERE `key` = ?',
                         [$window,$window,$key]);
-                    return (int) query('SELECT count FROM login_attempts WHERE key=?', [$key])->fetchColumn();
+                    return (int) query('SELECT `count` FROM login_attempts WHERE `key`=?', [$key])->fetchColumn();
                 });
                 if ($attempts > 12) {
                     throw new InputError('For mange loginforsøg. Prøv igen om lidt.');
@@ -122,12 +124,12 @@ function handlePost(?array $user, int $eventId, string $page): never
                 if (!password_verify($password, $account['password'] ?? '$2y$12$KnSjKRExyvlqf7dmpXvOMueheN7vYhBjlDNlm/fEM65tUpn4YB/wu') || !$account) {
                     throw new InputError('E-mail eller adgangskode er forkert.');
                 }
-                query('DELETE FROM login_attempts WHERE key=? OR window < ?', [$key, $window-24]);
+                query('DELETE FROM login_attempts WHERE `key`=? OR `window` < ?', [$key, $window-24]);
                 $id = $account['id'];
             }
 
             session_regenerate_id(true);
-            $_SESSION = ['user' => $id];
+            $_SESSION = ['user' => $id, 'database' => databaseIdentity()];
             $signedIn = account($id);
             $landing = isPlatformAdmin($signedIn) ? '?page=platform' : (canManageEvents($signedIn) && !$eventId ? $adminLink : $eventLink);
             if ($action === 'organizer') {
@@ -142,11 +144,12 @@ function handlePost(?array $user, int $eventId, string $page): never
 
         if ($action === 'join' && $user['role'] === 'helper') {
             atomic(function () use ($eventId, $user): void {
-                $shift = requireRow('SELECT v.*,e.name AS event_name,o.owner_id,o.name AS organizer_name
-                    FROM shifts v JOIN groups g ON g.id=v.group_id JOIN events e ON e.id=g.event_id
+                lockedRow('SELECT id FROM events WHERE id=?', [$eventId]);
+                $shift = lockedRow('SELECT v.*,e.name AS event_name,o.owner_id,o.name AS organizer_name
+                    FROM shifts v JOIN `groups` g ON g.id=v.group_id JOIN events e ON e.id=g.event_id
                     JOIN organizers o ON o.id=e.organizer_id
                     WHERE v.id=? AND e.id=? AND v.visible=1 AND v.bookable=1 AND g.visible=1 AND e.visible=1 AND o.active=1',
-                    [(int) input('id'), $eventId]);
+                    [(int) input('id'), $eventId]) ?? throw new InputError('Vi kunne ikke finde det valgte element.');
                 if ($shift['starts_at'] <= time()) {
                     throw new InputError('Vagten er allerede begyndt.');
                 }

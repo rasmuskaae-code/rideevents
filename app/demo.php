@@ -8,10 +8,11 @@ function seedDemo(): void
     }
 
     atomic(function (): void {
+        $organizer = lockedRow('SELECT id FROM organizers WHERE owner_id IS NULL');
         if (row('SELECT id FROM events LIMIT 1')) {
             return;
         }
-        $organizerId = (int) query('SELECT id FROM organizers WHERE owner_id IS NULL')->fetchColumn();
+        $organizerId = $organizer['id'];
         $day = new DateTimeImmutable('first saturday of next month');
         $events = [
             ['Vinterstævne på Enggården', 'spring', 'Enggårdens Rideklub', $day, 'En weekend med springklasser. Hjælp med at gøre stævnet til en god oplevelse for ryttere, heste og publikum.'],
@@ -45,7 +46,7 @@ function seedDemo(): void
                     ['Cafeteria', 'Servér kaffe og mad til gæster og ryttere.', [['Cafeteria – formiddag', 9, 12, 3]]],
                 ];
             foreach ($groups as [$group, $job, $shifts]) {
-                query('INSERT INTO groups (event_id,name,description,visible) VALUES (?,?,?,1)', [$eventId,$group,$job]);
+                query('INSERT INTO `groups` (event_id,name,description,visible) VALUES (?,?,?,1)', [$eventId,$group,$job]);
                 $groupId = (int) db()->lastInsertId();
                 foreach ($shifts as [$shift, $from, $until, $capacity]) {
                     query('INSERT INTO shifts (group_id,name,starts_at,ends_at,capacity,visible,bookable) VALUES (?,?,?,?,?,1,1)',

@@ -1,7 +1,7 @@
 <?php
 $organizers = query('SELECT o.*,u.name AS owner_name,u.email AS owner_email,
     (SELECT COUNT(*) FROM events e WHERE e.organizer_id=o.id) AS event_count
-    FROM organizers o LEFT JOIN users u ON u.id=o.owner_id ORDER BY o.owner_id IS NOT NULL,o.name COLLATE NOCASE,o.id')->fetchAll();
+    FROM organizers o LEFT JOIN users u ON u.id=o.owner_id ORDER BY o.owner_id IS NOT NULL,LOWER(o.name),o.id')->fetchAll();
 ?>
 <section class="interior">
     <div class="interior-heading">

@@ -16,6 +16,10 @@ session_start([
     'cookie_secure' => getenv('STAEVNE_SECURE_COOKIE') === '1' || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
     'cookie_samesite' => 'Lax',
 ]);
+$database = databaseIdentity();
+if (($_SESSION['database'] ?? null) !== $database) {
+    $_SESSION = ['database' => $database];
+}
 $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
 $user = isset($_SESSION['user']) ? account($_SESSION['user']) : null;
 $isAdmin = isPlatformAdmin($user);
@@ -33,7 +37,7 @@ $page = in_array($page, ['events','admin','platform','login','register','organiz
 
 if ($page === 'image') {
     $userId = $user['id'] ?? 0;
-    $image = row("SELECT i.* FROM images i JOIN groups g ON g.id=i.group_id JOIN events e ON e.id=g.event_id
+    $image = row("SELECT i.* FROM images i JOIN `groups` g ON g.id=i.group_id JOIN events e ON e.id=g.event_id
         JOIN organizers o ON o.id=e.organizer_id
         WHERE i.id=? AND ((o.active=1 AND (o.owner_id=? OR (g.visible=1 AND e.visible=1)))
         OR EXISTS (SELECT 1 FROM users WHERE id=? AND role='admin')
@@ -78,9 +82,9 @@ $eventSql = 'SELECT e.*,o.name AS organizer_name,o.active AS organizer_active
 $args = [];
 $allowOrganizerFilter = $page === 'events' || ($page === 'admin' && $isAdmin);
 $organizerOptions = match (true) {
-    $page === 'admin' && $isAdmin => query('SELECT id,name,active,owner_id FROM organizers ORDER BY name COLLATE NOCASE,id')->fetchAll(),
-    $page === 'events' => query('SELECT DISTINCT o.id,o.name,o.active FROM organizers o JOIN events e ON e.organizer_id=o.id
-        WHERE o.active=1 AND e.visible=1 ORDER BY o.name COLLATE NOCASE,o.id')->fetchAll(),
+    $page === 'admin' && $isAdmin => query('SELECT id,name,active,owner_id FROM organizers ORDER BY LOWER(name),id')->fetchAll(),
+    $page === 'events' => query('SELECT o.id,o.name,o.active FROM organizers o
+        WHERE o.active=1 AND EXISTS (SELECT 1 FROM events e WHERE e.organizer_id=o.id AND e.visible=1) ORDER BY LOWER(o.name),o.id')->fetchAll(),
     default => [],
 };
 $organizerFilter = (int) ($_GET['organizer'] ?? 0);

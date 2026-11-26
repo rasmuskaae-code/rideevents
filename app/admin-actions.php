@@ -5,12 +5,12 @@ function saveAdmin(string $action, int $eventId, array $user): int
 {
     $id = (int) input('id');
     $isAdmin = isPlatformAdmin($user);
-    $ownOrganizer = $isAdmin ? null : row('SELECT id FROM organizers WHERE owner_id=? AND active=1', [$user['id']]);
+    $creatingEvent = $action === 'event' && $id === 0 && $eventId === 0;
+    $event = $creatingEvent ? null : lockedRow('SELECT * FROM events WHERE id=?', [$eventId]);
+    $ownOrganizer = $isAdmin ? null : lockedRow('SELECT id FROM organizers WHERE owner_id=? AND active=1', [$user['id']]);
     if (!$isAdmin && !$ownOrganizer) {
         throw new AccessDenied();
     }
-    $creatingEvent = $action === 'event' && $id === 0 && $eventId === 0;
-    $event = $creatingEvent ? null : row('SELECT * FROM events WHERE id=?', [$eventId]);
     if (!$creatingEvent && (!$event || (!$isAdmin && $event['organizer_id'] !== $ownOrganizer['id']))) {
         throw new AccessDenied();
     }
@@ -43,7 +43,7 @@ function saveAdmin(string $action, int $eventId, array $user): int
             }
             return $eventId;
         }
-        foreach (query('SELECT v.starts_at,v.ends_at FROM shifts v JOIN groups g ON g.id=v.group_id WHERE g.event_id=?', [$eventId]) as $shift) {
+        foreach (query('SELECT v.starts_at,v.ends_at FROM shifts v JOIN `groups` g ON g.id=v.group_id WHERE g.event_id=?', [$eventId]) as $shift) {
             if (date('Y-m-d', $shift['starts_at']) < $starts || $shift['ends_at'] > parseDate($ends, 'Y-m-d')->modify('+1 day')->getTimestamp()) {
                 throw new InputError('Stævnet skal dække de oprettede vagter. Tilpas vagternes tider, før du forkorter perioden.');
             }
@@ -58,10 +58,10 @@ function saveAdmin(string $action, int $eventId, array $user): int
     if ($action === 'group') {
         $values = [field('name', 'Gruppenavn', 160), field('description', 'Jobbeskrivelse', 3000, false), flag('visible')];
         if ($id) {
-            $previous = requireRow('SELECT * FROM groups WHERE id=? AND event_id=?', [$id,$eventId]);
-            query('UPDATE groups SET name=?,description=?,visible=? WHERE id=?', [...$values,$id]);
+            $previous = requireRow('SELECT * FROM `groups` WHERE id=? AND event_id=?', [$id,$eventId]);
+            query('UPDATE `groups` SET name=?,description=?,visible=? WHERE id=?', [...$values,$id]);
         } else {
-            query('INSERT INTO groups (name,description,visible,event_id) VALUES (?,?,?,?)', [...$values,$eventId]);
+            query('INSERT INTO `groups` (name,description,visible,event_id) VALUES (?,?,?,?)', [...$values,$eventId]);
             $id = (int) db()->lastInsertId();
         }
         $changedImages = saveGroupImages($id);
@@ -69,7 +69,7 @@ function saveAdmin(string $action, int $eventId, array $user): int
             notifySignups('g.id', $id, 'Jobbeskrivelsen er opdateret', "Se de nye oplysninger om {$values[0]} ved {$event['name']} i Stævnevagt.");
         }
     } elseif ($action === 'shift') {
-        $group = requireRow('SELECT id FROM groups WHERE id=? AND event_id=?', [(int) input('group_id'),$eventId]);
+        $group = requireRow('SELECT id FROM `groups` WHERE id=? AND event_id=?', [(int) input('group_id'),$eventId]);
         $from = parseDate(input('starts_at'), 'Y-m-d\TH:i');
         $until = parseDate(input('ends_at'), 'Y-m-d\TH:i');
         if ($from >= $until || $from->format('Y-m-d') < $event['starts_on'] || $until > parseDate($event['ends_on'], 'Y-m-d')->modify('+1 day')) {
@@ -103,7 +103,7 @@ function saveAdmin(string $action, int $eventId, array $user): int
         }
     } elseif ($action === 'cancel') {
         $signup = requireRow('SELECT s.user_id,v.name FROM signups s JOIN shifts v ON v.id=s.shift_id
-            JOIN groups g ON g.id=v.group_id WHERE s.id=? AND g.event_id=?', [$id,$eventId]);
+            JOIN `groups` g ON g.id=v.group_id WHERE s.id=? AND g.event_id=?', [$id,$eventId]);
         query('DELETE FROM signups WHERE id=?', [$id]);
         notify($signup['user_id'], 'Du er afmeldt en vagt', "Du er afmeldt {$signup['name']} ved {$event['name']}.");
     } else {
