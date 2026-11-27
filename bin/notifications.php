@@ -11,7 +11,7 @@ reminders();
 
 $failed = false;
 try {
-    sendBrowserPush();
+    $failed = !sendBrowserPush(in_array('--verbose', $argv, true));
 } catch (Throwable) {
     fwrite(STDERR, "Browsernotifikationer kunne ikke behandles.\n");
     $failed = true;

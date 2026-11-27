@@ -17,7 +17,9 @@ if (!$key || !openssl_pkey_export($key, $pem)) {
     fwrite(STDERR, "Kunne ikke oprette en VAPID-nøgle.\n");
     exit(1);
 }
+$oldMask = umask(0077);
 $file = @fopen($directory . '/browser-push.pem', 'x');
+umask($oldMask);
 if (!$file) {
     fwrite(STDERR, "Kunne ikke oprette var/browser-push.pem. En eksisterende nøgle bevares.\n");
     exit(1);

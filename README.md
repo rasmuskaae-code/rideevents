@@ -51,6 +51,14 @@ I Plesk åbner du **Websites & Domains → Scheduled Tasks → Add Task** under 
 
 Markér opgaven som aktiv, og brug **Run Now** til at tjekke, at den kan køre med websitets `config.php`. Hvis der allerede er en opgave for `notifications.php`, så redigér den eksisterende.
 
+Hvis browseren ikke viser en notifikation, så tjek først under **Min profil**, at den er slået til på enheden. Udløs en ny notifikation efter aktiveringen, og lad den stå som ulæst, mens jobbet kører. Tidligere notifikationer genudsendes ikke ved aktivering. Kør jobbet som abonnementets systembruger fra projektmappen, og tilføj `--verbose` for at se, hvor mange abonnementer der findes, og om push-tjenesten accepterede beskederne.
+
+```bash
+/opt/plesk/php/8.3/bin/php bin/notifications.php --verbose
+```
+
+Hvis den private VAPID-nøgle er blevet delt, skal den udskiftes. Generér den nye nøgle som abonnementets systembruger, så filen er privat og kan læses af web-PHP og opgaven. Efter et nøgleskift skal brugerne aktivere browsernotifikationer igen på de berørte enheder.
+
 Ved brug af en almindelig crontab kan du i stedet indsætte denne linje. Tilpas PHP-versionen og projektstien til installationen.
 
 ```cron

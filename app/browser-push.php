@@ -107,17 +107,24 @@ function vapidAuthorization(string $audience, array $settings, int $now): string
     return 'vapid t=' . $encoded . '.' . base64Url($raw) . ', k=' . $settings['public'];
 }
 
-function sendBrowserPush(): void
+function sendBrowserPush(bool $verbose = false): bool
 {
     $settings = browserPushSettings();
     if (!$settings) {
-        return;
+        if ($verbose) {
+            fwrite(STDERR, "Browser-push er ikke tilgængelig i denne PHP-kørsel. Tjek browser_push, PEM-filens læseadgang, curl og openssl.\n");
+        }
+        return !$verbose;
     }
     $mysql = usingMysql();
     $lock = $mysql ? mysqlLock(db(), 'push', 0) : fopen(databaseConfig()['path'] . '.push.lock', 'c');
     if (!$lock || (!$mysql && !flock($lock, LOCK_EX | LOCK_NB))) {
-        return;
+        if ($verbose) {
+            fwrite(STDERR, "Browser-push kunne ikke få låsen. Prøv igen efter næste kørsel.\n");
+        }
+        return !$verbose;
     }
+    $accepted = $expired = $failed = 0;
     try {
         $now = time();
         $reminderKey = sqlConcat('s.id', "':'", 'v.starts_at');
@@ -137,6 +144,7 @@ function sendBrowserPush(): void
             $audience = pushAudience($endpoint);
             if ($audience === null) {
                 query('DELETE FROM push_subscriptions WHERE endpoint_hash=? AND user_id=?', [$entry['endpoint_hash'],$entry['user_id']]);
+                $expired++;
                 continue;
             }
 
@@ -152,11 +160,18 @@ function sendBrowserPush(): void
             if ($status >= 200 && $status < 300) {
                 query('UPDATE push_subscriptions SET last_notice_id=? WHERE endpoint_hash=? AND user_id=? AND last_notice_id=?',
                     [$entry['notice_id'],$entry['endpoint_hash'],$entry['user_id'],$entry['last_notice_id']]);
+                $accepted++;
             } elseif (in_array($status, [404,410], true)) {
                 query('DELETE FROM push_subscriptions WHERE endpoint_hash=? AND user_id=?', [$entry['endpoint_hash'],$entry['user_id']]);
+                $expired++;
+                if ($verbose) {
+                    fwrite(STDERR, "Browser-push-abonnement udløbet (HTTP $status). Aktivér igen på enheden.\n");
+                }
             } else {
                 query('UPDATE push_subscriptions SET next_attempt_at=? WHERE endpoint_hash=? AND user_id=?', [$now+300,$entry['endpoint_hash'],$entry['user_id']]);
-                error_log("Stævnevagt: Browserens push-tjeneste svarede med HTTP $status.");
+                $failed++;
+                $result = $status === 0 ? 'cURL-fejl ' . curl_errno($curl) : "HTTP $status";
+                fwrite(STDERR, "Browser-push til $audience fejlede ($result). Forsøges igen om 5 minutter.\n");
             }
         }
     } finally {
@@ -166,4 +181,10 @@ function sendBrowserPush(): void
             fclose($lock);
         }
     }
+    if ($verbose) {
+        $subscriptions = (int) query('SELECT COUNT(*) FROM push_subscriptions')->fetchColumn();
+        $waiting = (int) query('SELECT COUNT(*) FROM push_subscriptions WHERE next_attempt_at>?', [$now])->fetchColumn();
+        fwrite(STDOUT, "Browser-push: $subscriptions abonnementer, $accepted accepteret af push-tjenesten, $expired fjernet, $failed fejl, $waiting afventer nyt forsøg.\n");
+    }
+    return $failed === 0;
 }

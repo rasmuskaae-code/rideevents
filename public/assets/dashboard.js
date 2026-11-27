@@ -102,13 +102,20 @@ async function setupBrowserPush(panel) {
     try {
         await navigator.serviceWorker.register('push-worker.js');
         const registration = await navigator.serviceWorker.ready;
+        const key = panel.dataset.publicKey.replace(/-/g, '+').replace(/_/g, '/');
+        const serverKey = Uint8Array.from(atob(key), char => char.charCodeAt(0));
         let subscription = await registration.pushManager.getSubscription();
-        let enabled = subscription ? await update('push-status', subscription.endpoint) : false;
+        const oldKey = subscription?.options?.applicationServerKey;
+        const oldBytes = oldKey ? new Uint8Array(oldKey) : null;
+        let needsRenewal = oldBytes !== null && (oldBytes.length !== serverKey.length ||
+            oldBytes.some((byte, index) => byte !== serverKey[index]));
+        let enabled = subscription && !needsRenewal ? await update('push-status', subscription.endpoint) : false;
 
         function render() {
             toggle.hidden = false;
             toggle.textContent = enabled ? 'Slå fra på denne enhed' : 'Aktivér på denne enhed';
-            status.textContent = enabled ? 'Slået til i denne browser.' : 'Slået fra i denne browser.';
+            status.textContent = needsRenewal ? 'Nøglen er skiftet. Aktivér igen for at modtage beskeder.' :
+                enabled ? 'Slået til i denne browser.' : 'Slået fra i denne browser.';
         }
         render();
 
@@ -127,14 +134,16 @@ async function setupBrowserPush(panel) {
                         return;
                     }
                     if (subscription) {
+                        await update('push-disable', subscription.endpoint);
                         await subscription.unsubscribe();
+                        subscription = null;
                     }
-                    const key = panel.dataset.publicKey.replace(/-/g, '+').replace(/_/g, '/');
                     subscription = await registration.pushManager.subscribe({
                         userVisibleOnly: true,
-                        applicationServerKey: Uint8Array.from(atob(key), char => char.charCodeAt(0)),
+                        applicationServerKey: serverKey,
                     });
                     enabled = await update('push-enable', subscription.endpoint);
+                    needsRenewal = false;
                 }
                 render();
             } catch (error) {
