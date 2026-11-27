@@ -25,7 +25,7 @@ Dansk hjælperportal til dressur- og springstævner.
    unset staevne_adgangskode
    ```
 
-5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den bruger samme `config.php` og opretter påmindelser ud fra de gemte vagttider.
+5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opsæt derefter [notifikationsjobbet](#planlagt-notifikationsjob).
 
 ### Profil og notifikationer
 
@@ -33,11 +33,29 @@ Under **Min profil** kan brugere ændre navn, e-mail, telefon og kodeord. Ved sk
 
 Browsernotifikationer kræver HTTPS, en browser med Web Push og PHP-udvidelserne `openssl` og `curl`. På iPhone og iPad med iOS/iPadOS 16.4 eller nyere skal Stævnevagt tilføjes til hjemmeskærmen og åbnes derfra.
 
-1. Kør `php bin/browser-push-key.php` på webhotellet fra projektmappen. Den gemmer en privat VAPID-nøgle i `var/browser-push.pem`. Web-PHP og den planlagte opgave skal kunne læse filen.
+1. Kør `/opt/plesk/php/8.3/bin/php bin/browser-push-key.php` fra projektmappen på Plesk. Tilpas versionsnummeret til en installeret PHP-version på 8.2 eller nyere. Kommandoen gemmer en privat VAPID-nøgle i `var/browser-push.pem`. Web-PHP og den planlagte opgave skal kunne læse filen.
 2. Tilføj `browser_push` fra `config.example.php` til den private `config.php`. Sæt `subject` til f.eks. `mailto:admin@rideklub.dk`, og behold filstien eller ret den til nøglens placering.
-3. Kør det eksisterende `bin/notifications.php`-job hvert minut. Det sender browsernotifikationer uafhængigt af mailopsætningen. Den enkelte bruger vælger **Aktivér på denne enhed** under **Min profil**.
+3. Opsæt [notifikationsjobbet](#planlagt-notifikationsjob). Det sender browsernotifikationer uafhængigt af mailopsætningen. Den enkelte bruger vælger **Aktivér på denne enhed** under **Min profil**.
 
 Browseren viser en generel besked om, at der er nyt. Beskedens detaljer læses inde i Stævnevagt efter login.
+
+### Planlagt notifikationsjob
+
+I Plesk åbner du **Websites & Domains → Scheduled Tasks → Add Task** under abonnementet. Vælg **Run a PHP script** og udfyld felterne sådan:
+
+| Felt | Værdi |
+| --- | --- |
+| Script path | `event.coursetool.org/bin/notifications.php` (sti fra abonnementets hjemmemappe) |
+| PHP version | Samme version som websitet, mindst PHP 8.2 |
+| Run | **Cron style**, med værdien `* * * * *` |
+
+Markér opgaven som aktiv, og brug **Run Now** til at tjekke, at den kan køre med websitets `config.php`. Hvis der allerede er en opgave for `notifications.php`, så redigér den eksisterende.
+
+Ved brug af en almindelig crontab kan du i stedet indsætte denne linje. Tilpas PHP-versionen og projektstien til installationen.
+
+```cron
+* * * * * /opt/plesk/php/8.3/bin/php /var/www/vhosts/coursetool.org/event.coursetool.org/bin/notifications.php
+```
 
 ### Glemt kodeord og hurtigt login
 
