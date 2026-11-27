@@ -6,8 +6,11 @@ import hashlib
 import hmac
 import http.cookiejar
 import json
+from io import BytesIO
+from zipfile import ZipFile
 import os
 import re
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -255,7 +258,7 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn('Sydstævnet', guest.request('?page=mine')[1])
 
         self.assertEqual(self.db.execute('PRAGMA foreign_key_check').fetchall(), [])
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 5)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 6)
 
     def stripe_webhook(self, event, valid=True):
         now = int(time.time())
@@ -477,6 +480,85 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn('Dine mailindstillinger er gemt', first.post(profile, 'profile-mail', email_notifications=1)[1])
         self.assertEqual(self.db.execute('SELECT email_notice_after_id FROM user_preferences WHERE user_id=?', (person,)).fetchone()[0], notice)
         self.assertEqual(first.post(profile, 'push-status', endpoint='https://localhost/')[0], 400)
+
+    def test_external_staffing_and_leads(self):
+        owner = self.organizer('Bemandingsklub', 'staffing@example.test')
+        other = self.organizer('Anden klub', 'otherstaffing@example.test')
+        event = self.create_event(owner, 'Bemandingsstævne')
+        other_event = self.create_event(other, 'Andet stævne')
+        shift = self.create_shift(owner, event)
+        other_shift = self.create_shift(other, other_event)
+        group = self.db.execute('SELECT group_id FROM shifts WHERE id=?', (shift,)).fetchone()[0]
+        admin = f'?page=admin&event={event}'
+        other_admin = f'?page=admin&event={other_event}'
+        public = f'?event={event}'
+
+        for name, number in [('Ekstern Anne', '11447722'), ('Ekstern Bo', '11447733')]:
+            self.assertIn('Ændringen er gemt', owner.post(admin, 'contact', id=0, name=name, contact=number, task='Bane')[1])
+        contacts = dict(self.db.execute('SELECT name,id FROM contacts WHERE event_id=?', (event,)))
+        anne, bo = contacts['Ekstern Anne'], contacts['Ekstern Bo']
+        self.assertEqual(other.post(admin, 'external-assignment', other_admin, id=shift, contact_id=anne)[0], 403)
+        self.assertIn('Vi kunne ikke finde det valgte element', other.post(other_admin, 'external-assignment', id=other_shift, contact_id=anne)[1])
+        for ident in (anne, bo):
+            self.assertIn('Ændringen er gemt', owner.post(admin, 'external-assignment', id=shift, contact_id=ident)[1])
+        self.assertIn('2/2 på vagten', owner.request(admin)[1])
+        self.assertIn('Fuldt booket', Browser(self.base).request(public)[1])
+        self.assertNotIn('Ekstern Anne', Browser(self.base).request(public)[1])
+        self.assertIn('allerede sat på vagten', owner.post(admin, 'external-assignment', id=shift, contact_id=anne)[1])
+
+        helper = Browser(self.base)
+        helper.post('?page=register', 'register', name='Godkendt hjælper', email='lead@example.test', password=PASSWORD)
+        helper_id = self.db.execute("SELECT id FROM users WHERE email='lead@example.test'").fetchone()[0]
+        helper.post(public, 'apply')
+        self.assertIn('Vi kunne ikke finde det valgte element', owner.post(admin, 'group-lead', id=group, responsible=f'user:{helper_id}')[1])
+        self.assertEqual(other.post(admin, 'group-lead', other_admin, id=group, responsible=f'user:{helper_id}')[0], 403)
+        owner.post(admin, 'application', id=helper_id, decision='approved')
+        self.assertIn('Alle pladser er taget', helper.post(public, 'join', id=shift)[1])
+        self.assertIn('Ændringen er gemt', owner.post(admin, 'external-assignment', id=shift, contact_id=bo, remove_assignment=1)[1])
+        self.assertIn('Du er tilmeldt vagten', helper.post(public, 'join', id=shift)[1])
+        self.assertIn('flere tilmeldte', owner.post(admin, 'shift', id=shift, group_id=group, name='Vagt',
+                                                      starts_at=self.day+'T09:00', ends_at=self.day+'T11:00',
+                                                      capacity=1, visible=1, bookable=1)[1])
+
+        self.assertIn('Ansvarlig: Godkendt hjælper', owner.post(admin, 'group-lead', id=group, responsible=f'user:{helper_id}')[1])
+        self.assertIn('Vagtgrupper, du er ansvarlig for', helper.request('?page=mine')[1])
+        self.assertIn('Du er ansvarlig for en vagtgruppe', helper.request('?page=notices')[1])
+        self.assertIn('Ansvarlig: Ekstern Anne', owner.post(admin, 'group-lead', id=group, responsible=f'contact:{anne}')[1])
+        self.assertNotIn('Vagtgrupper, du er ansvarlig for', helper.request('?page=mine')[1])
+        self.assertIn('Gruppeansvar ændret', helper.request('?page=notices')[1])
+
+        export = f'?page=export&event={event}&format=xlsx'
+        try:
+            with owner.client.open(self.base+export, timeout=5) as response:
+                with ZipFile(BytesIO(response.read())) as workbook:
+                    sheet = workbook.read('xl/worksheets/sheet1.xml').decode()
+                    self.assertIn('Ekstern Anne (ekstern)', sheet)
+                    self.assertIn('11447722', sheet)
+                    self.assertIn('Ansvarlig', sheet)
+                    self.assertIn('A5:J7', sheet)
+        except urllib.error.HTTPError as error:
+            self.assertEqual(error.code, 501)
+
+        try:
+            with owner.client.open(self.base+export.replace('xlsx', 'pdf'), timeout=5) as response:
+                content = response.read()
+                self.assertTrue(content.startswith(b'%PDF'))
+                if shutil.which('pdftotext'):
+                    text = subprocess.check_output(['pdftotext','-','-'], input=content).decode()
+                    self.assertIn('Ekstern Anne', text)
+                    self.assertIn('Ansvarlig', text)
+        except urllib.error.HTTPError as error:
+            self.assertEqual(error.code, 501)
+
+        self.assertIn('Ændringen er gemt', owner.post(admin, 'group-lead', id=group, responsible='')[1])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM group_leads WHERE group_id=?', (group,)).fetchone()[0], 0)
+        self.assertIn('Ansvarlig: Ekstern Anne', owner.post(admin, 'group-lead', id=group, responsible=f'contact:{anne}')[1])
+        confirmation = owner.request(f'?page=delete&event={event}&kind=group&id={group}')[1]
+        signed = re.search(r'name="confirmation" value="([a-f0-9]+)"', confirmation).group(1)
+        self.assertIn('Gruppen er slettet', owner.post(f'?page=delete&event={event}', 'delete', admin,
+                                                        kind='group', id=group, confirmation=signed, confirm_delete=1)[1])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM external_shift_assignments WHERE shift_id=?', (shift,)).fetchone()[0], 0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM group_leads WHERE group_id=?', (group,)).fetchone()[0], 0)
 
 
 if __name__ == '__main__':

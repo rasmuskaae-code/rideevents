@@ -13,6 +13,7 @@ require dirname(__DIR__) . '/app/helper-applications.php';
 
 require dirname(__DIR__) . '/app/profile.php';
 require dirname(__DIR__) . '/app/event-content.php';
+require dirname(__DIR__) . '/app/staffing.php';
 require dirname(__DIR__) . '/app/browser-push.php';
 
 if (($_GET['page'] ?? '') === 'stripe-webhook') {

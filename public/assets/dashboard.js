@@ -147,3 +147,13 @@ async function setupBrowserPush(panel) {
         status.textContent = 'Browsernotifikationer kunne ikke indlæses. Prøv at genindlæse siden.';
     }
 }
+
+if (/^#(?:gruppe|vagt)-\d+$/.test(window.location.hash)) {
+    const section = document.getElementById(window.location.hash.slice(1));
+    for (let node = section; node; node = node.parentElement) {
+        if (node instanceof HTMLDetailsElement) {
+            node.open = true;
+        }
+    }
+    section?.scrollIntoView();
+}

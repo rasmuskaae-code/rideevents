@@ -18,16 +18,13 @@ function exportHelpers(?array $user, int $eventId, mixed $format): never
             return null;
         }
 
-        $rows = query('SELECT g.name AS group_name,g.visible AS group_visible,
-            v.id AS shift_id,v.name AS shift_name,v.starts_at,v.ends_at,v.capacity,v.visible,v.bookable,
-            u.name AS helper_name,u.email,
-            (SELECT COUNT(*) FROM signups t WHERE t.shift_id=v.id) AS booked
+        $rows = query('SELECT g.id AS group_id,g.name AS group_name,g.visible AS group_visible,
+            v.id AS shift_id,v.name AS shift_name,v.starts_at,v.ends_at,v.capacity,v.visible,v.bookable
             FROM `groups` g LEFT JOIN shifts v ON v.group_id=g.id
-            LEFT JOIN signups s ON s.shift_id=v.id LEFT JOIN users u ON u.id=s.user_id
-            WHERE g.event_id=? ORDER BY g.id,v.starts_at,v.id,LOWER(u.name),s.id', [$eventId])->fetchAll();
+            WHERE g.event_id=? ORDER BY g.id,v.starts_at,v.id', [$eventId])->fetchAll();
 
         $organizer = row('SELECT name FROM organizers WHERE id=?', [$event['organizer_id']]);
-        return [$event, $organizer['name'], $rows];
+        return [$event, $organizer['name'], $rows, eventRoster($eventId), groupLeads($eventId)];
     });
     if (!$report) {
         http_response_code(404);
@@ -35,24 +32,32 @@ function exportHelpers(?array $user, int $eventId, mixed $format): never
     }
     session_write_close();
 
-    [$event, $organizer, $rows] = $report;
-    $columns = ['Vagtgruppe','Post','Start','Slut','Hjælper','E-mail','Tilmeldte','Pladser','Status'];
+    [$event, $organizer, $rows, $roster, $leads] = $report;
+    $columns = ['Vagtgruppe','Post','Start','Slut','Hjælper','Kontakt','Tilmeldte','Pladser','Status','Ansvarlig'];
     $entries = [];
     $now = time();
     foreach ($rows as $row) {
+        $bookings = $roster[$row['shift_id']] ?? [];
+        usort($bookings, fn(array $first, array $second): int => strcasecmp($first['name'], $second['name']));
+        $booked = count($bookings);
         $status = match (true) {
             !$row['shift_id'] => 'Ingen poster',
             !$row['group_visible'] || !$row['visible'] => 'Skjult',
             $row['ends_at'] <= $now => 'Afholdt',
             $row['starts_at'] <= $now => 'I gang',
             !$row['bookable'] => 'Lukket',
-            $row['booked'] >= $row['capacity'] => 'Fuldt booket',
+            $booked >= $row['capacity'] => 'Fuldt booket',
             default => 'Åben',
         };
-        $entries[] = [
-            $row['group_name'], $row['shift_name'], $row['starts_at'], $row['ends_at'], $row['helper_name'], $row['email'],
-            $row['shift_id'] ? $row['booked'] : null, $row['capacity'], $status,
-        ];
+        $lead = $leads[$row['group_id']] ?? null;
+        $leadName = $lead ? $lead['name'] . ($lead['contact_id'] !== null ? ' (ekstern)' : '') : null;
+        foreach ($bookings ?: [null] as $booking) {
+            $name = $booking ? $booking['name'] . ($booking['external'] ? ' (ekstern)' : '') : null;
+            $entries[] = [
+                $row['group_name'], $row['shift_name'], $row['starts_at'], $row['ends_at'], $name, $booking['contact'] ?? null,
+                $row['shift_id'] ? $booked : null, $row['capacity'], $status, $leadName,
+            ];
+        }
     }
     $meta = $organizer . ' · ' . $event['location'] . ' · ' . eventDates($event) . ' · Dansk tid';
 

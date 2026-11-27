@@ -204,7 +204,7 @@ function handlePost(?array $user, int $eventId, string $page): never
                 if (row('SELECT id FROM signups WHERE user_id=? AND shift_id=?', [$user['id'], $shift['id']])) {
                     throw new InputError('Du er allerede tilmeldt denne vagt.');
                 }
-                if (query('SELECT COUNT(*) FROM signups WHERE shift_id=?', [$shift['id']])->fetchColumn() >= $shift['capacity']) {
+                if (occupiedSeats($shift['id']) >= $shift['capacity']) {
                     throw new InputError('Alle pladser er taget.');
                 }
                 query('INSERT INTO signups (user_id, shift_id, created_at) VALUES (?,?,?)', [$user['id'], $shift['id'], time()]);
@@ -246,6 +246,8 @@ function handlePost(?array $user, int $eventId, string $page): never
         $anchor = match ($action) {
             'contact' => '#kontakter',
             'event-banner', 'event-link' => '#staevneindhold',
+            'group-lead' => '#gruppe-' . (int) input('id'),
+            'external-assignment' => '#vagt-' . (int) input('id'),
             default => '',
         };
         go('?page=admin&event=' . $savedEvent . $anchor, 'Ændringen er gemt.');

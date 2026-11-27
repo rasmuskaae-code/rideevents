@@ -38,9 +38,23 @@
 elseif ($page === 'mine'):
     $shifts = query('SELECT v.*,g.name AS group_name,g.id AS group_id,e.name AS event_name,o.name AS organizer_name FROM signups s JOIN shifts v ON v.id=s.shift_id
         JOIN `groups` g ON g.id=v.group_id JOIN events e ON e.id=g.event_id JOIN organizers o ON o.id=e.organizer_id WHERE s.user_id=? ORDER BY v.starts_at DESC,v.id DESC', [$user['id']])->fetchAll();
+    $responsibilities = query('SELECT g.name AS group_name,e.name AS event_name,o.name AS organizer_name
+        FROM group_leads l JOIN `groups` g ON g.id=l.group_id JOIN events e ON e.id=g.event_id
+        JOIN organizers o ON o.id=e.organizer_id WHERE l.user_id=? ORDER BY e.starts_on,g.id', [$user['id']])->fetchAll();
 ?>
 <section class="interior">
     <h1>Mine vagter</h1><p>Kontakt stævnets arrangør, hvis du skal afmeldes en vagt.</p>
+    <?php if ($responsibilities): ?>
+        <h2>Vagtgrupper, du er ansvarlig for</h2>
+        <div class="panel list-panel">
+            <?php foreach ($responsibilities as $responsibility): ?>
+                <div class="listing"><span class="tile"><?= icon('flag') ?></span><div>
+                    <h3><?= e($responsibility['group_name']) ?></h3>
+                    <p><?= e($responsibility['event_name']) ?> · <?= e($responsibility['organizer_name']) ?></p>
+                </div></div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
     <?php if (!$shifts): ?><div class="panel empty-panel"><h2>Du har ingen tilmeldte vagter</h2><a class="button primary" href="<?= e($eventLink) ?>">Se stævner</a></div><?php endif; ?>
     <?php foreach ([true, false] as $future):
         $entries = array_values(array_filter($shifts, fn (array $shift): bool => ($shift['ends_at'] > time()) === $future));

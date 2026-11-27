@@ -1,8 +1,8 @@
 <?php
 [$label, $definite, $impact] = match ($deleteKind) {
     'event' => ['stævne', 'stævnet', 'Alle grupper, poster, billeder, tilmeldinger og den private kontaktliste slettes.'],
-    'group' => ['gruppe', 'gruppen', 'Gruppens poster, billeder og tilmeldinger slettes.'],
-    'shift' => ['post', 'posten', 'Postens tilmeldinger slettes.'],
+    'group' => ['gruppe', 'gruppen', 'Gruppens poster, billeder, tilmeldinger, eksterne tildelinger og ansvarlige slettes.'],
+    'shift' => ['post', 'posten', 'Postens tilmeldinger og eksterne tildelinger slettes.'],
 };
 ?>
 <section class="panel auth-card delete-card" aria-labelledby="delete-title">

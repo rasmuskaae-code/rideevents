@@ -7,7 +7,7 @@ require_once __DIR__ . '/vendor/tfpdf/font/unifont/ttfonts.php';
 final class HelperReportPdf extends tFPDF
 {
     protected $cacheUnicodeFonts = false;
-    private const WIDTHS = [35, 41, 28, 28, 35, 57, 14, 13, 22];
+    private const WIDTHS = [32, 34, 26, 26, 31, 43, 14, 13, 22, 32];
 
     public function __construct(private string $eventName, private string $meta, private array $columns)
     {

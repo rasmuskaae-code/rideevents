@@ -22,8 +22,8 @@ try {
     ]);
     $sqlite->beginTransaction();
     $version = (int) $sqlite->query('PRAGMA user_version')->fetchColumn();
-    if (!in_array($version, [1,2,3,4,5], true)) {
-        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1–5.');
+    if (!in_array($version, [1,2,3,4,5,6], true)) {
+        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1–6.');
     }
 
     $mysql = db();
@@ -47,6 +47,8 @@ try {
             'event_banners' => 'event_id,mime,data',
             'event_links' => 'id,event_id,label,url',
             'push_subscriptions' => 'endpoint_hash,user_id,endpoint,last_notice_id,next_attempt_at',
+            'external_shift_assignments' => 'shift_id,contact_id',
+            'group_leads' => 'group_id,user_id,contact_id',
         ];
         $assertEmpty = static function () use ($tables): int {
             $organizers = query('SELECT id,name,owner_id,active FROM organizers')->fetchAll();
@@ -81,6 +83,7 @@ try {
                     'organizers' => 2,
                     'helper_applications','organizer_event_usage','billing_orders' => 3,
                     'user_preferences','event_banners','event_links','push_subscriptions' => 5,
+                    'external_shift_assignments','group_leads' => 6,
                     default => 1,
                 };
                 if ($version < $minimumVersion) {

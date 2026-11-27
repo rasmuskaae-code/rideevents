@@ -1,4 +1,6 @@
 <?php
+require __DIR__ . '/admin-staffing-view.php';
+
 $adminLink = '?page=admin&event=' . $eventId;
 $eventForm = $event ?? ['name'=>'','discipline'=>'spring','location'=>'','starts_on'=>'','ends_on'=>'','description'=>'','visible'=>0];
 $groupList = $event ? query('SELECT * FROM `groups` WHERE event_id=? ORDER BY id', [$eventId])->fetchAll() : [];
@@ -44,37 +46,39 @@ $needsPayment = $usage && !$usage['free'] && !$usage['credits'] && $usage['annua
             <?php eventAdminForm($adminLink, $eventForm, $eventId, $isAdmin, $organizerOptions, $selectedOrganizer); ?>
         </section>
     <?php else:
-        $counts = row('SELECT COUNT(DISTINCT v.id) AS posts, COUNT(s.id) AS bookings
-            FROM `groups` g JOIN shifts v ON v.group_id=g.id LEFT JOIN signups s ON s.shift_id=v.id WHERE g.event_id=?', [$eventId]);
+        $posts = (int) query('SELECT COUNT(v.id) FROM `groups` g JOIN shifts v ON v.group_id=g.id WHERE g.event_id=?', [$eventId])->fetchColumn();
+        $roster = eventRoster($eventId);
+        $leads = groupLeads($eventId);
+        $contacts = query('SELECT * FROM contacts WHERE event_id=? ORDER BY LOWER(name),id', [$eventId])->fetchAll();
+        $approved = array_filter($applications, fn(array $entry): bool => $entry['status'] === 'approved');
         metricStrip([
             ['clipboard', 'Vagtgrupper', count($groupList)],
-            ['flag', 'Poster', (int) $counts['posts']],
-            ['users', 'Tilmeldinger', (int) $counts['bookings']],
+            ['flag', 'Poster', $posts],
+            ['users', 'Tilmeldinger', array_sum(array_map('count', $roster))],
         ], 'Stævnets vagter');
     ?>
     <div class="admin-grid">
             <section aria-labelledby="groups-heading" class="panel admin-groups">
                 <header class="panel-heading"><div><h2 id="groups-heading">Vagtgrupper og poster</h2><p>Se tilmeldinger og redigér vagterne for stævnet.</p></div></header>
                 <?php foreach ($groupList as $index => $group):
+                    $lead = $leads[$group['id']] ?? null;
                     $shifts = query('SELECT * FROM shifts WHERE group_id=? ORDER BY starts_at,id', [$group['id']])->fetchAll();
                 ?>
-                <details class="admin-details" <?= $index === 0 ? 'open' : '' ?>>
-                    <summary><span class="tile"><?= icon(groupIcon($group['name'])) ?></span><strong><?= e($group['name']) ?></strong><span class="status <?= $group['visible'] ? 'available' : '' ?>"><?= $group['visible'] ? 'Synlig' : 'Skjult' ?></span><?= icon('chevron', 17) ?></summary>
+                <details class="admin-details" id="gruppe-<?= $group['id'] ?>" <?= $index === 0 ? 'open' : '' ?>>
+                    <summary><span class="tile"><?= icon(groupIcon($group['name'])) ?></span><span class="admin-group-title"><strong><?= e($group['name']) ?></strong><?php if ($lead): ?><span class="muted shift-date-line">Ansvarlig: <?= e($lead['name']) ?></span><?php endif; ?></span><span class="status <?= $group['visible'] ? 'available' : '' ?>"><?= $group['visible'] ? 'Synlig' : 'Skjult' ?></span><?= icon('chevron', 17) ?></summary>
                     <div class="admin-details-body">
                         <div class="admin-shifts">
                         <?php foreach ($shifts as $shift):
-                            $signups = query('SELECT s.id,u.name,u.email FROM signups s JOIN users u ON u.id=s.user_id WHERE s.shift_id=? ORDER BY s.created_at,s.id', [$shift['id']])->fetchAll();
+                            $bookings = $roster[$shift['id']] ?? [];
                         ?>
-                        <details class="nested-details">
-                            <summary><span><strong><?= e($shift['name']) ?></strong><span class="muted shift-date-line"><?= e(shiftDate($shift)) ?></span></span><span class="status"><?= count($signups) ?>/<?= $shift['capacity'] ?> tilmeldt<?= !$shift['visible'] ? ' · skjult' : (!$shift['bookable'] ? ' · lukket' : '') ?></span><?= icon('chevron', 16) ?></summary>
+                        <details class="nested-details" id="vagt-<?= $shift['id'] ?>">
+                            <summary><span><strong><?= e($shift['name']) ?></strong><span class="muted shift-date-line"><?= e(shiftDate($shift)) ?></span></span><span class="status"><?= count($bookings) ?>/<?= $shift['capacity'] ?> på vagten<?= !$shift['visible'] ? ' · skjult' : (!$shift['bookable'] ? ' · lukket' : '') ?></span><?= icon('chevron', 16) ?></summary>
                             <div class="nested-body">
-                                <?php shiftForm($adminLink, $group['id'], $shift, $event['starts_on'], $eventId); ?>
-                                <h4>Tilmeldte hjælpere</h4>
-                                <?php if (!$signups): ?><p>Ingen tilmeldte endnu.</p><?php endif; ?>
-                                <?php foreach ($signups as $signup): ?>
-                                    <div class="signup-row"><div><strong><?= e($signup['name']) ?></strong><br><a class="text-link" href="mailto:<?= e($signup['email']) ?>"><?= e($signup['email']) ?></a></div>
-                                    <form method="post" action="<?= e($adminLink) ?>" data-confirm="Afmeld hjælperen fra denne vagt?"><?php csrf('cancel', $signup['id']); ?><button class="button danger small" type="submit">Afmeld</button></form></div>
-                                <?php endforeach; ?>
+                                <?php shiftStaffing($adminLink, $shift, $bookings, $contacts); ?>
+                                <details class="nested-details shift-settings">
+                                    <summary><strong><?= icon('settings', 16) ?> Redigér post</strong><?= icon('chevron', 16) ?></summary>
+                                    <div class="nested-body"><?php shiftForm($adminLink, $group['id'], $shift, $event['starts_on'], $eventId); ?></div>
+                                </details>
                             </div>
                         </details>
                         <?php endforeach; ?>
@@ -83,6 +87,10 @@ $needsPayment = $usage && !$usage['free'] && !$usage['credits'] && $usage['annua
                             <div class="nested-body"><?php shiftForm($adminLink, $group['id'], null, $event['starts_on'], $eventId); ?></div>
                         </details>
                         </div>
+                        <details class="nested-details group-settings">
+                            <summary><strong><?= icon('user', 16) ?> Vælg ansvarlig</strong><?= icon('chevron', 16) ?></summary>
+                            <div class="nested-body"><?php groupLeadForm($adminLink, $group['id'], $lead, $approved, $contacts); ?></div>
+                        </details>
                         <details class="nested-details group-settings">
                             <summary><strong><?= icon('settings', 16) ?> Redigér vagtgruppe</strong><?= icon('chevron', 16) ?></summary>
                             <div class="nested-body"><?php groupForm($adminLink, $group, $eventId); ?></div>
@@ -97,9 +105,6 @@ $needsPayment = $usage && !$usage['free'] && !$usage['credits'] && $usage['annua
                 <datalist id="standard-grupper"><option>Bane &amp; forhindringer</option><option>Sekretariat &amp; indtjek</option><option>Cafeteria</option><option>Parkering &amp; velkomst</option></datalist>
                 <datalist id="standard-poster"><option>Banepersonale</option><option>Banebygning</option><option>Indtjek og sekretariat</option><option>Skriver ved dommerbordet</option><option>Resultater og præmier</option><option>Cafeteria</option><option>Parkeringshjælp</option></datalist>
             </section>
-        <?php
-            $contacts = query('SELECT * FROM contacts WHERE event_id=? ORDER BY LOWER(name),id', [$eventId])->fetchAll();
-        ?>
         <aside class="sidebar">
         <?php require __DIR__ . '/admin-applications-view.php'; ?>
         <details class="panel settings-card">
@@ -124,7 +129,7 @@ $needsPayment = $usage && !$usage['free'] && !$usage['credits'] && $usage['annua
         </section>
         <section class="panel admin-section" id="kontakter">
             <span class="tile"><?= icon('users') ?></span><h2>Eksterne hjælpere</h2>
-            <p>Privat kontaktliste ved <?= e($event['name']) ?>.</p>
+            <p>Privat kontaktliste ved <?= e($event['name']) ?>. Du kan sætte personerne på vagter under Vagtgrupper og poster.</p>
             <?php foreach ($contacts as $contact): ?>
                 <details class="nested-details contact-details"><summary><span><strong><?= e($contact['name']) ?></strong><span class="muted shift-date-line"><?= e($contact['task']) ?></span></span><?= icon('chevron', 16) ?></summary><div class="nested-body"><?php contactForm($adminLink, $contact); ?></div></details>
             <?php endforeach; ?>
