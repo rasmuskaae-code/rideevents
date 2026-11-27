@@ -60,7 +60,7 @@ elseif ($page === 'mine'):
     $notices = query('SELECT * FROM notices WHERE user_id=? ORDER BY created_at DESC,id DESC', [$user['id']])->fetchAll();
 ?>
 <section class="interior">
-    <div class="interior-heading"><h1>Notifikationer</h1><?php if ($unread): ?><form method="post"><?php csrf('read_notices'); ?><button class="button secondary" type="submit">Markér alle som læst</button></form><?php endif; ?></div>
+    <div class="interior-heading"><h1>Notifikationer</h1><a class="text-link" href="?page=profile#profile-notifications">Indstillinger</a><?php if ($unread): ?><form method="post"><?php csrf('read_notices'); ?><button class="button secondary" type="submit">Markér alle som læst</button></form><?php endif; ?></div>
     <?php if (!$notices): ?><div class="panel empty-panel"><h2>Ingen notifikationer endnu</h2></div><?php else: ?>
     <div class="panel list-panel">
         <?php foreach ($notices as $notice): ?><div class="listing"><span class="tile"><?= icon('bell') ?></span><div>

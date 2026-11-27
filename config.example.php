@@ -16,6 +16,10 @@ return [
         'from' => '',
         'public_url' => 'https://hjaelpere.rideklub.dk',
     ],
+    'browser_push' => [
+        'subject' => '',
+        'private_key_file' => __DIR__ . '/var/browser-push.pem',
+    ],
     'stripe' => [
         'public_url' => 'https://hjaelpere.rideklub.dk',
         'secret_key' => '',

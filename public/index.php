@@ -11,6 +11,10 @@ require dirname(__DIR__) . '/app/stripe.php';
 require dirname(__DIR__) . '/app/billing.php';
 require dirname(__DIR__) . '/app/helper-applications.php';
 
+require dirname(__DIR__) . '/app/profile.php';
+require dirname(__DIR__) . '/app/event-content.php';
+require dirname(__DIR__) . '/app/browser-push.php';
+
 if (($_GET['page'] ?? '') === 'stripe-webhook') {
     handleStripeWebhook();
 }
@@ -49,7 +53,21 @@ if ($demo) {
 
 $queryId = (int) ($_GET['event'] ?? 0);
 $page = $_GET['page'] ?? 'events';
-$page = in_array($page, ['events','admin','delete','export','platform','login','forgot','quick-login','login-confirm','reset-password','register','organizer','billing','mine','notices','image'], true) ? $page : 'events';
+$page = in_array($page, ['events','admin','delete','export','platform','login','forgot','quick-login','login-confirm','reset-password','register','organizer','billing','mine','notices','profile','image','banner'], true) ? $page : 'events';
+
+if ($page === 'banner') {
+    $event = row('SELECT e.id,e.visible,o.active FROM events e JOIN organizers o ON o.id=e.organizer_id WHERE e.id=?', [$queryId]);
+    $banner = $event && (($event['visible'] && $event['active']) || ($canManage && managedEvent($queryId, $user)))
+        ? row('SELECT mime,data FROM event_banners WHERE event_id=?', [$queryId])
+        : null;
+    if (!$banner) {
+        http_response_code(404);
+        exit;
+    }
+    header('Content-Type: ' . $banner['mime']);
+    echo $banner['data'];
+    exit;
+}
 
 if ($page === 'image') {
     $userId = $user['id'] ?? 0;
@@ -102,7 +120,7 @@ if ($page === 'organizer' && !$canCreateOrganizer) {
     http_response_code(403);
     $page = 'forbidden';
 }
-if (in_array($page, ['mine','notices'], true) && !$user) {
+if (in_array($page, ['mine','notices','profile'], true) && !$user) {
     go('?page=login&event=' . $queryId);
 }
 if ($user) {
@@ -168,6 +186,7 @@ $title = match ($page) {
     'forbidden' => 'Administratoradgang',
     'mine' => 'Mine vagter',
     'notices' => 'Notifikationer',
+    'profile' => 'Min profil',
     default => 'Stævner',
 };
 ?>
@@ -177,6 +196,8 @@ $title = match ($page) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="theme-color" content="#182737">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="assets/push-icon-192.png">
     <title><?= e($title) ?> · Stævnevagt</title>
     <link rel="stylesheet" href="<?= e(assetUrl('dashboard.css')) ?>">
     <script src="<?= e(assetUrl('dashboard.js')) ?>" defer></script>
@@ -224,6 +245,7 @@ $title = match ($page) {
                     <div class="panel profile-menu">
                         <p><?= e($user['name']) ?></p>
                         <span><?= $isAdmin ? 'Platformadministrator' : ($canManage ? e($user['organizer_name']) : 'Hjælper') ?></span>
+                        <div class="profile-menu-actions"><a class="button secondary small" href="?page=profile"><?= icon('user', 16) ?> Min profil</a></div>
                         <form method="post" action="<?= e($eventLink) ?>"><?php csrf('logout'); ?><button class="button secondary small" type="submit"><?= icon('logout', 16) ?> Log ud</button></form>
                     </div>
                 </details>
@@ -240,6 +262,8 @@ if ($page === 'events') {
     require dirname(__DIR__) . '/app/events-view.php';
 } elseif ($page === 'admin') {
     require dirname(__DIR__) . '/app/admin-view.php';
+} elseif ($page === 'profile') {
+    require dirname(__DIR__) . '/app/profile-view.php';
 } elseif ($page === 'billing') {
     require dirname(__DIR__) . '/app/billing-view.php';
 } elseif ($page === 'delete') {

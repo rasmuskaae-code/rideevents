@@ -305,3 +305,17 @@ details[open] > summary > .chevron, details[open] > summary > svg:last-child { t
 .auth-alternative { margin-top: 10px; }
 .auth-unavailable { margin-top: 12px; color: var(--muted); }
 .button:disabled { cursor: not-allowed; opacity: .6; }
+
+.profile-menu-actions { margin-top: 12px; }
+.profile-menu-actions .button, .profile-menu form .button { width: 100%; justify-content: flex-start; }
+.profile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); align-items: start; gap: 14px; }
+.profile-reset { margin-top: 10px; }
+.browser-push, .event-content-links { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); }
+.browser-push h3, .event-content-links h3 { font-size: .97rem; margin-bottom: 6px; }
+.browser-push p { font-size: .9rem; margin-bottom: 8px; }
+.event-banner, .banner-preview { display: block; width: 100%; object-fit: contain; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); }
+.event-banner { max-height: 245px; margin-bottom: 15px; }
+.banner-preview { max-height: 120px; }
+.public-event-links { list-style: none; margin: 0; padding: 0 16px; }
+.public-event-links li + li { border-top: 1px solid var(--subtle-line); }
+.public-event-links a { min-height: 41px; display: flex; align-items: center; justify-content: space-between; gap: 9px; overflow-wrap: anywhere; }

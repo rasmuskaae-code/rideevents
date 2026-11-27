@@ -66,3 +66,84 @@ if (authLink) {
         authLink.querySelector('button[type=submit]').disabled = true;
     }
 }
+
+const browserPush = document.querySelector('[data-browser-push]');
+if (browserPush) {
+    setupBrowserPush(browserPush);
+}
+
+async function setupBrowserPush(panel) {
+    const status = panel.querySelector('[data-push-status]');
+    const toggle = panel.querySelector('[data-push-toggle]');
+    if (!window.isSecureContext || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        status.textContent = 'Denne browser understøtter ikke browsernotifikationer her.';
+        return;
+    }
+    if (Notification.permission === 'denied') {
+        status.textContent = 'Notifikationer er blokeret. Tillad dem i browserens indstillinger.';
+        return;
+    }
+
+    async function update(action, endpoint) {
+        const response = await fetch('?page=profile', {
+            method: 'POST',
+            body: new URLSearchParams({csrf:panel.dataset.csrf, action, endpoint}),
+        });
+        if (response.redirected) {
+            throw new Error('Log ind igen for at ændre browsernotifikationer.');
+        }
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Indstillingen kunne ikke gemmes.');
+        }
+        return data.active === true;
+    }
+
+    try {
+        await navigator.serviceWorker.register('push-worker.js');
+        const registration = await navigator.serviceWorker.ready;
+        let subscription = await registration.pushManager.getSubscription();
+        let enabled = subscription ? await update('push-status', subscription.endpoint) : false;
+
+        function render() {
+            toggle.hidden = false;
+            toggle.textContent = enabled ? 'Slå fra på denne enhed' : 'Aktivér på denne enhed';
+            status.textContent = enabled ? 'Slået til i denne browser.' : 'Slået fra i denne browser.';
+        }
+        render();
+
+        toggle.addEventListener('click', async () => {
+            toggle.disabled = true;
+            try {
+                if (enabled && subscription) {
+                    await update('push-disable', subscription.endpoint);
+                    enabled = false;
+                    await subscription.unsubscribe();
+                    subscription = null;
+                } else {
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') {
+                        status.textContent = 'Du skal tillade notifikationer i browseren for at slå dem til.';
+                        return;
+                    }
+                    if (subscription) {
+                        await subscription.unsubscribe();
+                    }
+                    const key = panel.dataset.publicKey.replace(/-/g, '+').replace(/_/g, '/');
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: Uint8Array.from(atob(key), char => char.charCodeAt(0)),
+                    });
+                    enabled = await update('push-enable', subscription.endpoint);
+                }
+                render();
+            } catch (error) {
+                status.textContent = error.message;
+            } finally {
+                toggle.disabled = false;
+            }
+        });
+    } catch {
+        status.textContent = 'Browsernotifikationer kunne ikke indlæses. Prøv at genindlæse siden.';
+    }
+}

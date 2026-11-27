@@ -165,6 +165,19 @@ function handlePost(?array $user, int $eventId, string $page): never
             go('?page=login&event=' . $eventId, 'Log ind for at fortsætte.');
         }
 
+        if (in_array($action, ['profile-details','profile-password','profile-mail'], true)) {
+            updateProfile($user, $action);
+            go('?page=profile', match ($action) {
+                'profile-password' => 'Dit kodeord er opdateret.',
+                'profile-mail' => 'Dine mailindstillinger er gemt.',
+                default => 'Din profil er gemt.',
+            });
+        }
+
+        if (in_array($action, ['push-status','push-enable','push-disable'], true)) {
+            respondToPushAction($user['id'], $action, input('endpoint'));
+        }
+
         if ($action === 'buy') {
             startCheckout($user, input('plan'));
         }
@@ -230,7 +243,12 @@ function handlePost(?array $user, int $eventId, string $page): never
             };
             go($savedEvent ? $adminLink . '#groups-heading' : '?page=admin', "$label er slettet.");
         }
-        go('?page=admin&event=' . $savedEvent . ($action === 'contact' ? '#kontakter' : ''), 'Ændringen er gemt.');
+        $anchor = match ($action) {
+            'contact' => '#kontakter',
+            'event-banner', 'event-link' => '#staevneindhold',
+            default => '',
+        };
+        go('?page=admin&event=' . $savedEvent . $anchor, 'Ændringen er gemt.');
     } catch (BillingLimit $error) {
         $_SESSION['flash'] = ['error', $error->getMessage()];
         go(isPlatformAdmin($user) ? $adminLink : '?page=billing');
@@ -244,6 +262,7 @@ function handlePost(?array $user, int $eventId, string $page): never
             'admin', 'delete' => $adminLink,
             'platform' => '?page=platform',
             'billing' => '?page=billing',
+            'profile' => '?page=profile',
             default => $eventLink,
         });
     }
