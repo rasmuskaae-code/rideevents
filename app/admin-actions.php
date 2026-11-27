@@ -10,6 +10,14 @@ function saveAdmin(string $action, int $eventId, array $user): int
     if (!$creatingEvent && !$event) {
         throw new AccessDenied();
     }
+    if ($action === 'event-banner' || $action === 'event-link') {
+        if ($action === 'event-banner') {
+            saveEventBanner($eventId);
+        } else {
+            saveEventLink($eventId, $id);
+        }
+        return $eventId;
+    }
     if ($action === 'application') {
         decideHelperApplication($event, $id, input('decision'));
         return $eventId;
@@ -123,26 +131,19 @@ function saveGroupImages(int $group): bool
 {
     $changed = false;
     for ($position = 1; $position <= 2; $position++) {
-        $upload = $_FILES['image' . $position] ?? [];
-        if (($upload['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        $image = uploadedImage('image' . $position, 'Upload et billede på højst 3 MB.');
+        if ($image === null) {
             if (flag('remove_image' . $position)) {
                 $changed = query('DELETE FROM images WHERE group_id=? AND position=?', [$group,$position])->rowCount() > 0 || $changed;
             }
             continue;
         }
-        if ($upload['error'] !== UPLOAD_ERR_OK || $upload['size'] > 3 * 1024 * 1024 || !is_uploaded_file($upload['tmp_name'])) {
-            throw new InputError('Upload et billede på højst 3 MB.');
-        }
-        $info = getimagesize($upload['tmp_name']);
-        if (!$info || !in_array($info['mime'], ['image/jpeg','image/png','image/webp'], true)) {
-            throw new InputError('Vælg et billede i JPG-, PNG- eller WebP-format.');
-        }
         $existing = row('SELECT id FROM images WHERE group_id=? AND position=?', [$group,$position]);
         $statement = db()->prepare($existing
             ? 'UPDATE images SET mime=?,data=? WHERE group_id=? AND position=?'
             : 'INSERT INTO images (mime,data,group_id,position) VALUES (?,?,?,?)');
-        $statement->bindValue(1, $info['mime']);
-        $statement->bindValue(2, file_get_contents($upload['tmp_name']), PDO::PARAM_LOB);
+        $statement->bindValue(1, $image[0]);
+        $statement->bindValue(2, $image[1], PDO::PARAM_LOB);
         $statement->bindValue(3, $group, PDO::PARAM_INT);
         $statement->bindValue(4, $position, PDO::PARAM_INT);
         $statement->execute();

@@ -255,7 +255,7 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn('Sydstævnet', guest.request('?page=mine')[1])
 
         self.assertEqual(self.db.execute('PRAGMA foreign_key_check').fetchall(), [])
-        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 4)
+        self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0], 5)
 
     def stripe_webhook(self, event, valid=True):
         now = int(time.time())
@@ -402,6 +402,81 @@ class OrganizerTests(unittest.TestCase):
         self.db.commit()
         self.assertIn(success, visitor.post(quick, 'quick-login', email='links@example.test')[1])
         self.assertEqual(len(list(self.mail_dir.glob('message.*'))), 4)
+
+    def test_profile_and_event_content(self):
+        first = self.organizer('Indholdstest', 'content@example.test')
+        second = self.organizer('Anden arrangør', 'othercontent@example.test')
+        event = self.create_event(first, 'Stævne med indhold')
+        other_event = self.create_event(second, 'Andet stævne')
+        admin = f'?page=admin&event={event}'
+        second_admin = f'?page=admin&event={other_event}'
+        public = f'?event={event}'
+        guest = Browser(self.base)
+
+        self.assertIn('Banner og links', first.request(admin)[1])
+        self.assertEqual(second.post(admin, 'event-link', second_admin, id=0, label='Uvedkommende', url='https://example.test/')[0], 403)
+        _, html, _ = first.post(admin, 'event-link', id=0, label='Forkert', url='javascript:alert(1)')
+        self.assertIn('Indtast en gyldig adresse', html)
+        _, html, _ = first.post(admin, 'event-link', id=0, label='Tidsplan på Equipe', url='https://online.equipe.com/')
+        self.assertIn('Ændringen er gemt', html)
+        self.assertIn('Tidsplan på Equipe', guest.request(public)[1])
+        link = self.db.execute('SELECT id FROM event_links WHERE event_id=?', (event,)).fetchone()[0]
+        self.assertIn('Vi kunne ikke finde det valgte element', second.post(second_admin, 'event-link', id=link, remove_link=1)[1])
+        self.assertIn('Ændringen er gemt', first.post(admin, 'event-link', id=link, label='Propositioner', url='https://go.rideforbund.dk/')[1])
+        self.assertIn('https://go.rideforbund.dk/', guest.request(public)[1])
+
+        token = re.search(r'name="csrf" value="([a-f0-9]+)"', first.request(admin)[1]).group(1)
+        image = (ROOT / 'public/assets/stadium.webp').read_bytes()
+        boundary = 'StvnFixtureBoundary'
+        chunks = []
+        for key, value in {'csrf':token,'action':'event-banner'}.items():
+            chunks.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
+        chunks.append(f'--{boundary}\r\nContent-Disposition: form-data; name="banner"; filename="banner.webp"\r\nContent-Type: image/webp\r\n\r\n'.encode())
+        chunks.extend([image, f'\r\n--{boundary}--\r\n'.encode()])
+        upload = urllib.request.Request(self.base + admin, b''.join(chunks), {'Content-Type':f'multipart/form-data; boundary={boundary}'})
+        with first.client.open(upload, timeout=5) as response:
+            self.assertIn('Ændringen er gemt', response.read().decode())
+        self.assertIn('class="event-banner"', guest.request(public)[1])
+        banner = f'?page=banner&event={event}'
+        with guest.client.open(self.base + banner, timeout=5) as response:
+            self.assertEqual(response.headers.get_content_type(), 'image/webp')
+            self.assertEqual(response.read(), image)
+        self.db.execute('UPDATE events SET visible=0 WHERE id=?', (event,))
+        self.db.commit()
+        self.assertEqual(guest.request(banner)[0], 404)
+        self.assertEqual(first.request(banner)[0], 200)
+        self.assertEqual(second.request(banner)[0], 404)
+        self.assertIn('Ændringen er gemt', first.post(admin, 'event-banner', remove_banner=1)[1])
+        self.assertEqual(first.request(banner)[0], 404)
+
+        profile = '?page=profile'
+        fields = {'name':'Opdateret navn', 'email':'content@example.test', 'phone':'+45 12 34 56 78'}
+        self.assertIn('Din profil er gemt', first.post(profile, 'profile-details', **fields)[1])
+        self.assertIn('+45 12 34 56 78', first.request(profile)[1])
+        wrong_email = dict(fields, email='typo@example.test')
+        self.assertIn('Det nuværende kodeord er forkert', first.post(profile, 'profile-details', **wrong_email)[1])
+        taken = dict(fields, email='othercontent@example.test')
+        self.assertIn('E-mailadressen er allerede i brug', first.post(profile, 'profile-details', **taken, current_password=PASSWORD)[1])
+        other_session = Browser(self.base)
+        other_session.post('?page=login', 'login', email=fields['email'], password=PASSWORD)
+        new_email = dict(fields, email='updated@example.test')
+        self.assertIn('Din profil er gemt', first.post(profile, 'profile-details', **new_email, current_password=PASSWORD)[1])
+        self.assertIn('updated@example.test', first.request(profile)[1])
+        self.assertIn('?page=login', other_session.request(profile)[2])
+
+        replacement = 'changed-profile-password'
+        self.assertIn('Dit kodeord er opdateret', first.post(profile, 'profile-password', current_password=PASSWORD,
+                                                            password=replacement, password_confirm=replacement)[1])
+        self.assertIn('Du er logget ind', other_session.post('?page=login', 'login', email=new_email['email'], password=replacement)[1])
+        self.assertIn('Dine mailindstillinger er gemt', first.post(profile, 'profile-mail')[1])
+        person = self.db.execute('SELECT id FROM users WHERE email=?', (new_email['email'],)).fetchone()[0]
+        prefs = self.db.execute('SELECT phone,email_notifications FROM user_preferences WHERE user_id=?', (person,)).fetchone()
+        self.assertEqual(prefs, (fields['phone'], 0))
+        notice = self.db.execute("INSERT INTO notices (user_id,title,body,created_at) VALUES (?,'Test','Tekst',?)", (person, int(time.time()))).lastrowid
+        self.db.commit()
+        self.assertIn('Dine mailindstillinger er gemt', first.post(profile, 'profile-mail', email_notifications=1)[1])
+        self.assertEqual(self.db.execute('SELECT email_notice_after_id FROM user_preferences WHERE user_id=?', (person,)).fetchone()[0], notice)
+        self.assertEqual(first.post(profile, 'push-status', endpoint='https://localhost/')[0], 400)
 
 
 if __name__ == '__main__':

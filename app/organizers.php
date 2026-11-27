@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 function account(int $id): ?array
 {
-    return row('SELECT u.id,u.name,u.email,u.role,u.password,o.id AS organizer_id,o.name AS organizer_name,o.active AS organizer_active
-        FROM users u LEFT JOIN organizers o ON o.owner_id=u.id WHERE u.id=?', [$id]);
+    return row("SELECT u.id,u.name,u.email,u.role,u.password,o.id AS organizer_id,o.name AS organizer_name,o.active AS organizer_active,
+        COALESCE(p.phone,'') AS phone,COALESCE(p.email_notifications,1) AS email_notifications
+        FROM users u LEFT JOIN organizers o ON o.owner_id=u.id LEFT JOIN user_preferences p ON p.user_id=u.id WHERE u.id=?", [$id]);
 }
 
 function isPlatformAdmin(?array $user): bool

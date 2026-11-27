@@ -112,6 +112,7 @@ $needsPayment = $usage && !$usage['free'] && !$usage['credits'] && $usage['annua
                 <?php eventAdminForm($adminLink, $eventForm, $eventId, $isAdmin, $organizerOptions, $selectedOrganizer); ?>
             </div>
         </details>
+        <?php require __DIR__ . '/admin-event-content-view.php'; ?>
         <section class="panel admin-section" aria-labelledby="helpers-export">
             <span class="tile"><?= icon('clipboard') ?></span>
             <h2 id="helpers-export">Hjælperoversigt</h2>

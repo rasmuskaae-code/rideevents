@@ -22,8 +22,8 @@ try {
     ]);
     $sqlite->beginTransaction();
     $version = (int) $sqlite->query('PRAGMA user_version')->fetchColumn();
-    if (!in_array($version, [1,2,3,4], true)) {
-        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1, 2, 3 eller 4.');
+    if (!in_array($version, [1,2,3,4,5], true)) {
+        throw new RuntimeException('Filen skal være en Stævnevagt-database med skemaversion 1–5.');
     }
 
     $mysql = db();
@@ -43,6 +43,10 @@ try {
             'helper_applications' => 'event_id,user_id,status,requested_at,decided_at',
             'organizer_event_usage' => 'organizer_id,created_count',
             'billing_orders' => 'id,organizer_id,plan,live_mode,price_id,session_id,payment_intent,checkout_url,expires_at,created_at,closed_at,paid_at,access_until,consumed_at,refunded_at',
+            'user_preferences' => 'user_id,phone,email_notifications,email_notice_after_id',
+            'event_banners' => 'event_id,mime,data',
+            'event_links' => 'id,event_id,label,url',
+            'push_subscriptions' => 'endpoint_hash,user_id,endpoint,last_notice_id,next_attempt_at',
         ];
         $assertEmpty = static function () use ($tables): int {
             $organizers = query('SELECT id,name,owner_id,active FROM organizers')->fetchAll();
@@ -73,7 +77,13 @@ try {
 
             $counts = [];
             foreach ($tables as $table => $columns) {
-                if (($version === 1 && $table === 'organizers') || ($version < 3 && in_array($table, ['helper_applications','organizer_event_usage','billing_orders'], true))) {
+                $minimumVersion = match ($table) {
+                    'organizers' => 2,
+                    'helper_applications','organizer_event_usage','billing_orders' => 3,
+                    'user_preferences','event_banners','event_links','push_subscriptions' => 5,
+                    default => 1,
+                };
+                if ($version < $minimumVersion) {
                     continue;
                 }
 
@@ -89,7 +99,7 @@ try {
                         $type = match (true) {
                             $value === null => PDO::PARAM_NULL,
                             is_int($value) => PDO::PARAM_INT,
-                            $table === 'images' && $index === 4 => PDO::PARAM_LOB,
+                            ($table === 'images' && $index === 4) || ($table === 'event_banners' && $index === 2) => PDO::PARAM_LOB,
                             default => PDO::PARAM_STR,
                         };
                         $insert->bindValue($index + 1, $value, $type);

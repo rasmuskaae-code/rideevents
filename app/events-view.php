@@ -8,6 +8,8 @@
         (SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id AND s.user_id=?) AS mine
         FROM shifts v JOIN `groups` g ON g.id=v.group_id
         WHERE g.event_id=? AND g.visible=1 AND v.visible=1 ORDER BY v.starts_at,v.id', [$user['id'] ?? 0, $eventId])->fetchAll();
+    $banner = row('SELECT event_id FROM event_banners WHERE event_id=?', [$eventId]);
+    $links = query('SELECT label,url FROM event_links WHERE event_id=? ORDER BY id', [$eventId])->fetchAll();
     $application = $user && !$isAdmin
         ? row('SELECT status FROM helper_applications WHERE event_id=? AND user_id=?', [$eventId,$user['id']])
         : null;
@@ -42,6 +44,9 @@
     </form>
     </div>
 </div>
+<?php if ($banner): ?>
+    <img class="event-banner" src="?page=banner&amp;event=<?= $eventId ?>" alt="<?= e('Banner for ' . $event['name']) ?>">
+<?php endif; ?>
 <?php if (!$isAdmin && ($applicationStatus !== '' || $event['ends_on'] >= $today)): ?>
 <section class="panel application-banner" aria-labelledby="application-heading">
     <div>
@@ -109,7 +114,7 @@
     <aside class="sidebar" aria-label="Stævneoplysninger">
         <section class="panel event-card">
             <header class="panel-heading"><h2>Stævneoplysninger</h2></header>
-            <?php if ($event['discipline'] !== 'dressur'): ?>
+            <?php if (!$banner && $event['discipline'] !== 'dressur'): ?>
                 <img class="event-photo" src="assets/stadium.webp" alt="" width="340" height="141">
             <?php endif; ?>
             <div class="event-card-body">
@@ -122,6 +127,16 @@
                 <?php if ($event['description'] !== ''): ?><p><?= nl2br(e($event['description'])) ?></p><?php endif; ?>
             </div>
         </section>
+        <?php if ($links): ?>
+        <section class="panel">
+            <header class="panel-heading"><h2>Eksterne links</h2></header>
+            <ul class="public-event-links">
+                <?php foreach ($links as $link): ?>
+                    <li><a class="text-link" href="<?= e($link['url']) ?>" target="_blank" rel="noopener noreferrer"><?= e($link['label']) ?><?= icon('external', 16) ?><span class="sr-only"> (åbner i en ny fane)</span></a></li>
+                <?php endforeach; ?>
+            </ul>
+        </section>
+        <?php endif; ?>
         <?php if (!$user): ?><section class="panel info-card">
             <span class="tile"><?= icon('user', 20) ?></span>
             <div>

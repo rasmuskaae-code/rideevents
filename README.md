@@ -27,6 +27,18 @@ Dansk hjælperportal til dressur- og springstævner.
 
 5. Log ind og åbn **Stævneadmin**, eller lad rideklubben oprette sig via **Opret arrangør**. Opret en planlagt opgave i Plesk, der kører `php /absolut/sti/til/projekt/bin/notifications.php` hvert minut. Den bruger samme `config.php` og opretter påmindelser ud fra de gemte vagttider.
 
+### Profil og notifikationer
+
+Under **Min profil** kan brugere ændre navn, e-mail, telefon og kodeord. Ved skift af e-mail eller kodeord kræves det aktuelle kodeord. E-mailnotifikationer om stævner og vagter kan slås fra samme sted. Det påvirker ikke e-mails med login- eller kodeordslinks.
+
+Browsernotifikationer kræver HTTPS, en browser med Web Push og PHP-udvidelserne `openssl` og `curl`. På iPhone og iPad med iOS/iPadOS 16.4 eller nyere skal Stævnevagt tilføjes til hjemmeskærmen og åbnes derfra.
+
+1. Kør `php bin/browser-push-key.php` på webhotellet fra projektmappen. Den gemmer en privat VAPID-nøgle i `var/browser-push.pem`. Web-PHP og den planlagte opgave skal kunne læse filen.
+2. Tilføj `browser_push` fra `config.example.php` til den private `config.php`. Sæt `subject` til f.eks. `mailto:admin@rideklub.dk`, og behold filstien eller ret den til nøglens placering.
+3. Kør det eksisterende `bin/notifications.php`-job hvert minut. Det sender browsernotifikationer uafhængigt af mailopsætningen. Den enkelte bruger vælger **Aktivér på denne enhed** under **Min profil**.
+
+Browseren viser en generel besked om, at der er nyt. Beskedens detaljer læses inde i Stævnevagt efter login.
+
 ### Glemt kodeord og hurtigt login
 
 Under **Log ind** kan brugere bede om et link til at vælge et nyt kodeord eller logge ind via e-mail. Loginlinket gælder i 15 minutter, og linket til nyt kodeord gælder i 30 minutter. Man åbner mailen og trykker **Log ind** for at bekræfte, så en automatisk mailscanner kan åbne linket uden at bruge det. Et nyt kodeord afslutter eksisterende login og gør udestående links ugyldige.
@@ -49,6 +61,8 @@ På et offentligt stævne kan en hjælper trykke **Ansøg som hjælper**. Under 
 ### Redigering, sletning og eksport
 
 Vælg et stævne under **Stævneadmin**. Brug **Gem stævne** for at redigere stævnet. Åbn en vagtgruppe eller post for at gemme ændringer eller slette den. Sletning kræver en særskilt bekræftelse og fjerner de berørte tilmeldinger. Tilmeldte hjælpere får besked. Sletning af et stævne fjerner også den private kontaktliste til stævnet.
+
+Under **Banner og links** kan arrangøren uploade et stævnebanner i JPG, PNG eller WebP på højst 3 MB og tilføje links til fx tidsplaner og propositioner. Banner og links vises på stævnesiden. **Eksterne hjælpere** er en privat kontaktliste til folk, arrangøren kontakter uden om Stævnevagt. Poster på listen opretter ingen bruger eller vagttilmelding.
 
 Under **Hjælperoversigt** kan du hente en PDF eller en Excel-fil med vagtgrupper, poster, start og slut, hjælpernes navne og e-mails samt antal tilmeldte og pladser. Ledige poster fremgår også, og Excel-filen kan filtreres. Eksporten er tilgængelig for stævnets arrangør og platformadministratorer.
 
