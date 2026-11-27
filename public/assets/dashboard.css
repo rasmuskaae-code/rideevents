@@ -319,3 +319,8 @@ details[open] > summary > .chevron, details[open] > summary > svg:last-child { t
 .public-event-links { list-style: none; margin: 0; padding: 0 16px; }
 .public-event-links li + li { border-top: 1px solid var(--subtle-line); }
 .public-event-links a { min-height: 41px; display: flex; align-items: center; justify-content: space-between; gap: 9px; overflow-wrap: anywhere; }
+
+.admin-group-title { flex: 1; min-width: 0; }
+.shift-staffing h4, .shift-staffing > p { margin-top: 0; }
+.external-assignment, .shift-settings { margin-top: 12px; }
+.external-assignment { max-width: 360px; }

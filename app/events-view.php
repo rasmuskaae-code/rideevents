@@ -4,7 +4,8 @@
 <?php else:
     $groups = query('SELECT * FROM `groups` WHERE event_id=? AND visible=1 ORDER BY id', [$eventId])->fetchAll();
     $shifts = query('SELECT v.*,
-        (SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id) AS booked,
+        ((SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id) +
+            (SELECT COUNT(*) FROM external_shift_assignments a WHERE a.shift_id=v.id)) AS booked,
         (SELECT COUNT(*) FROM signups s WHERE s.shift_id=v.id AND s.user_id=?) AS mine
         FROM shifts v JOIN `groups` g ON g.id=v.group_id
         WHERE g.event_id=? AND g.visible=1 AND v.visible=1 ORDER BY v.starts_at,v.id', [$user['id'] ?? 0, $eventId])->fetchAll();

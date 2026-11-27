@@ -62,9 +62,11 @@ På et offentligt stævne kan en hjælper trykke **Ansøg som hjælper**. Under 
 
 Vælg et stævne under **Stævneadmin**. Brug **Gem stævne** for at redigere stævnet. Åbn en vagtgruppe eller post for at gemme ændringer eller slette den. Sletning kræver en særskilt bekræftelse og fjerner de berørte tilmeldinger. Tilmeldte hjælpere får besked. Sletning af et stævne fjerner også den private kontaktliste til stævnet.
 
-Under **Banner og links** kan arrangøren uploade et stævnebanner i JPG, PNG eller WebP på højst 3 MB og tilføje links til fx tidsplaner og propositioner. Banner og links vises på stævnesiden. **Eksterne hjælpere** er en privat kontaktliste til folk, arrangøren kontakter uden om Stævnevagt. Poster på listen opretter ingen bruger eller vagttilmelding.
+Under **Banner og links** kan arrangøren uploade et stævnebanner i JPG, PNG eller WebP på højst 3 MB og tilføje links til fx tidsplaner og propositioner. Banner og links vises på stævnesiden. **Eksterne hjælpere** er en privat kontaktliste til folk, arrangøren kontakter uden om Stævnevagt. Opret kontakten, og åbn derefter den relevante post under **Vagtgrupper og poster** for at sætte kontakten på vagten. En ekstern tildeling optager én plads. Arrangøren giver fortsat eksterne hjælpere besked manuelt.
 
-Under **Hjælperoversigt** kan du hente en PDF eller en Excel-fil med vagtgrupper, poster, start og slut, hjælpernes navne og e-mails samt antal tilmeldte og pladser. Ledige poster fremgår også, og Excel-filen kan filtreres. Eksporten er tilgængelig for stævnets arrangør og platformadministratorer.
+Åbn en vagtgruppe og vælg **Vælg ansvarlig** for at udnævne en godkendt eller ekstern hjælper. Godkendte hjælpere får besked og kan se ansvaret under **Mine vagter**. Selve ansvaret ændrer ikke deres vagttilmeldinger.
+
+Under **Hjælperoversigt** kan du hente en PDF eller en Excel-fil med vagtgrupper, poster, start og slut, hjælpernes navne og kontaktoplysninger, antal tilmeldte og pladser samt gruppeansvarlige. Ledige poster fremgår også, og Excel-filen kan filtreres. Eksporten er tilgængelig for stævnets arrangør og platformadministratorer.
 
 Aktivér PHP-udvidelserne `mbstring` og `zlib` til PDF og `zip` til Excel på Plesk. PDF-biblioteket og skrifttypen ligger under `app/vendor/tfpdf/` med deres respektive licenser.
 

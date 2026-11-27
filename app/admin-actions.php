@@ -10,6 +10,17 @@ function saveAdmin(string $action, int $eventId, array $user): int
     if (!$creatingEvent && !$event) {
         throw new AccessDenied();
     }
+    if ($action === 'external-assignment' || $action === 'group-lead') {
+        if ($action === 'external-assignment') {
+            assignExternalHelper($eventId, $id, (int) input('contact_id'), flag('remove_assignment') === 1);
+        } else {
+            if (!is_string($_POST['responsible'] ?? null)) {
+                throw new InputError('Vælg en hjælper til gruppen.');
+            }
+            saveGroupLead($event, $id, input('responsible'));
+        }
+        return $eventId;
+    }
     if ($action === 'event-banner' || $action === 'event-link') {
         if ($action === 'event-banner') {
             saveEventBanner($eventId);
@@ -97,7 +108,7 @@ function saveAdmin(string $action, int $eventId, array $user): int
         $values = [field('name', 'Postens navn', 160), $from->getTimestamp(), $until->getTimestamp(), $capacity, flag('visible'), flag('bookable')];
         if ($id) {
             $previous = requireRow('SELECT * FROM shifts WHERE id=? AND group_id=?', [$id,$group['id']]);
-            if ($capacity < query('SELECT COUNT(*) FROM signups WHERE shift_id=?', [$id])->fetchColumn()) {
+            if ($capacity < occupiedSeats($id)) {
                 throw new InputError('Der er flere tilmeldte end det valgte antal pladser.');
             }
             query('UPDATE shifts SET name=?,starts_at=?,ends_at=?,capacity=?,visible=?,bookable=? WHERE id=?', [...$values,$id]);

@@ -25,7 +25,7 @@ function helperReportExcel(string $event, string $meta, array $columns, array $e
         $rows .= '<row r="' . $number . '">' . $cells . '</row>';
     }
 
-    $filter = 'A5:I' . (count($entries) + 5);
+    $filter = 'A5:J' . (count($entries) + 5);
     $worksheet = <<<XML
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
@@ -36,10 +36,11 @@ function helperReportExcel(string $event, string $meta, array $columns, array $e
     <col min="6" max="6" width="36" customWidth="1"/>
     <col min="7" max="8" width="13" customWidth="1"/>
     <col min="9" max="9" width="18" customWidth="1"/>
+    <col min="10" max="10" width="26" customWidth="1"/>
   </cols>
   <sheetData>$rows</sheetData>
   <autoFilter ref="$filter"/>
-  <mergeCells count="3"><mergeCell ref="A1:I1"/><mergeCell ref="A2:I2"/><mergeCell ref="A3:I3"/></mergeCells>
+  <mergeCells count="3"><mergeCell ref="A1:J1"/><mergeCell ref="A2:J2"/><mergeCell ref="A3:J3"/></mergeCells>
 </worksheet>
 XML;
     $parts = [
